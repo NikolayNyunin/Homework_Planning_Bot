@@ -2,6 +2,8 @@ import pandas as pd
 import json
 from itertools import islice
 
+MAX_LESSONS = 5
+
 
 def set_schedule(user_id, file):
     file = pd.ExcelFile(file)
@@ -27,7 +29,7 @@ def set_schedule(user_id, file):
                 schedule[0][day_index].append(-1)
             else:
                 schedule[0][day_index].append(subject)
-            if len(schedule[0][day_index]) >= 6:
+            if len(schedule[0][day_index]) >= MAX_LESSONS:
                 break
         day_index += 1
 
@@ -38,9 +40,27 @@ def set_schedule(user_id, file):
                 schedule[1][day_index].append(-1)
             else:
                 schedule[1][day_index].append(subject)
-            if len(schedule[1][day_index]) >= 6:
+            if len(schedule[1][day_index]) >= MAX_LESSONS:
                 break
         day_index += 1
 
     with open('files/' + str(user_id) + '_schedule.json', 'w') as schedule_file:
         json.dump(schedule, schedule_file)
+
+
+def get_schedule(user_id, week, day):
+    with open('files/' + str(user_id) + '_subjects.json', 'r', encoding='utf-8') as subjects_json:
+        subjects = json.load(subjects_json)
+    with open('files/' + str(user_id) + '_schedule.json', 'r') as schedule_json:
+        schedule = json.load(schedule_json)
+
+    result = ''
+    lessons = schedule[week][day]
+    for index in range(MAX_LESSONS):
+        result += str(index + 1) + ':\t'
+        if lessons[index] == -1:
+            result += 'No lesson.\n\n'
+        else:
+            result += subjects[str(lessons[index])]['Subject'] + '\n\n'
+
+    return result
