@@ -1,8 +1,14 @@
-import pandas as pd
+import os
+import datetime
+import pytz
 import json
 from itertools import islice
 
+import pandas as pd
+
 MAX_LESSONS = 5
+WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+TIMEZONE = pytz.timezone('Europe/Moscow')
 
 
 def set_schedule(user_id, file):
@@ -47,20 +53,83 @@ def set_schedule(user_id, file):
     with open('files/' + str(user_id) + '_schedule.json', 'w') as schedule_file:
         json.dump(schedule, schedule_file)
 
+    os.remove('files/' + str(user_id) + '_homework.json')
 
-def get_schedule(user_id, week, day):
+
+def get_schedule(user_id, ordinal_date):
     with open('files/' + str(user_id) + '_subjects.json', 'r', encoding='utf-8') as subjects_json:
         subjects = json.load(subjects_json)
     with open('files/' + str(user_id) + '_schedule.json', 'r') as schedule_json:
         schedule = json.load(schedule_json)
 
-    result = ''
-    lessons = schedule[week][day]
+    try:
+        with open('files/' + str(user_id) + '_homework.json', 'r', encoding='utf-8') as homework_json:
+            homework = json.load(homework_json)
+    except FileNotFoundError:
+        homework_exists = False
+    else:
+        homework_exists = True
+
+    date = datetime.date.fromordinal(ordinal_date)
+    week = date.isocalendar()[1] % 2
+    week_day = date.weekday()
+
+    result = '{0} ({1}.{2}):\n\n'.format(WEEK_DAYS[week_day], date.day, str(date.month).zfill(2))
+    if week_day == 6:
+        return result + 'No lessons.'
+
+    day_schedule = schedule[week][week_day]
     for index in range(MAX_LESSONS):
         result += str(index + 1) + ':\t'
-        if lessons[index] == -1:
+        if day_schedule[index] == -1:
             result += 'No lesson.\n\n'
         else:
-            result += subjects[str(lessons[index])]['Subject'] + '\n\n'
+            result += subjects[str(day_schedule[index])]['Subject'] + '\n'
+            if homework_exists:
+                for h in homework:
+                    if h['Date'] == ordinal_date and h['Subject'] == day_schedule[index]:
+                        result += h['Description'] + '\n'
+
+            result += '\n'
 
     return result
+
+
+def get_subjects(user_id):
+    with open('files/' + str(user_id) + '_subjects.json', 'r', encoding='utf-8') as subjects_json:
+        subjects = json.load(subjects_json)
+    subjects = [val['Subject'] for val in subjects.values()]
+    return subjects
+
+
+def add_homework(user_id, subject_index, description):
+    path = 'files/' + str(user_id) + '_homework.json'
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as homework_json:
+            homework = json.load(homework_json)
+    else:
+        homework = []
+
+    with open('files/' + str(user_id) + '_schedule.json', 'r') as schedule_json:
+        schedule = json.load(schedule_json)
+
+    date = datetime.datetime.now(TIMEZONE).date().toordinal() + 1
+    week = datetime.date.fromordinal(date).isocalendar()[1] % 2
+    week_day = datetime.date.fromordinal(date).weekday()
+    for i in range(14):
+        if week_day == 6:
+            date += 1
+            week = (week + 1) % 2
+            week_day = 0
+            continue
+
+        day_schedule = schedule[week][week_day]
+        if subject_index in day_schedule:
+            homework.append({'Date': date, 'Subject': subject_index, 'Description': description})
+            break
+
+        date += 1
+        week_day += 1
+
+    with open(path, 'w', encoding='utf-8') as homework_json:
+        json.dump(homework, homework_json, ensure_ascii=False)
