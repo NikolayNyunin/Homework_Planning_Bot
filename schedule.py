@@ -53,7 +53,8 @@ def set_schedule(user_id, file):
     with open('files/' + str(user_id) + '_schedule.json', 'w') as schedule_file:
         json.dump(schedule, schedule_file)
 
-    os.remove('files/' + str(user_id) + '_homework.json')
+    if os.path.exists('files/' + str(user_id) + '_homework.json'):
+        os.remove('files/' + str(user_id) + '_homework.json')
 
 
 def get_schedule(user_id, ordinal_date):

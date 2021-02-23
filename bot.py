@@ -1,12 +1,12 @@
 import datetime
 
 import telebot
-from telebot.types import ReplyKeyboardMarkup
+from telebot.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 from my_token import TOKEN
 from schedule import TIMEZONE, set_schedule, get_schedule, get_subjects, add_homework
 
-MARKUP = ReplyKeyboardMarkup().add('Today', 'Tomorrow', 'Week', 'Homework')
+MARKUP = ReplyKeyboardMarkup(resize_keyboard=True).add('Today', 'Tomorrow', 'Week', 'Homework')
 
 bot = telebot.TeleBot(TOKEN)
 data = {}
@@ -36,7 +36,7 @@ def handle_document(message):
     with open(path, 'wb') as new_file:
         new_file.write(file)
 
-    markup = ReplyKeyboardMarkup(one_time_keyboard=True).add('Yes', 'No')
+    markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True).add('Yes', 'No')
     bot.send_message(message.chat.id, 'Are you sure you want to change your schedule?\n'
                                       'This will delete all your recorded homework.', reply_markup=markup)
     bot.register_next_step_handler(message, handle_change_schedule_answer)
@@ -44,7 +44,7 @@ def handle_document(message):
 
 def handle_change_schedule_answer(message):
     if message.text is None or message.text.lower() not in ('yes', 'no'):
-        markup = ReplyKeyboardMarkup(one_time_keyboard=True).add('Yes', 'No')
+        markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True).add('Yes', 'No')
         bot.send_message(message.chat.id, 'Incorrect response. Please choose one of the options.', reply_markup=markup)
         bot.register_next_step_handler(message, handle_change_schedule_answer)
 
@@ -81,12 +81,12 @@ def handle_text(message):
 
         elif message.text.lower() == 'homework':
             subjects = get_subjects(message.from_user.id)
-            markup = ReplyKeyboardMarkup(one_time_keyboard=True).add(*subjects)
+            markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True).add(*subjects, row_width=1)
             bot.send_message(message.chat.id, 'Choose the subject.', reply_markup=markup)
             bot.register_next_step_handler(message, handle_subject)
 
         else:
-            bot.send_message(message.chat.id, "Bot couldn't understand you.")
+            bot.send_message(message.chat.id, "Bot couldn't understand you.", reply_markup=MARKUP)
 
     except FileNotFoundError:
         bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
@@ -100,7 +100,7 @@ def handle_subject(message):
         subjects = get_subjects(message.from_user.id)
 
         if message.text is None or message.text not in subjects:
-            markup = ReplyKeyboardMarkup(one_time_keyboard=True).add(*subjects)
+            markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True).add(*subjects, row_width=1)
             bot.send_message(message.chat.id, 'Incorrect response. Please choose one of the options.',
                              reply_markup=markup)
             bot.register_next_step_handler(message, handle_subject)
@@ -108,7 +108,7 @@ def handle_subject(message):
 
         index = subjects.index(message.text)
         data[message.from_user.id] = index
-        bot.send_message(message.chat.id, 'Write homework description.')
+        bot.send_message(message.chat.id, 'Write homework description.', reply_markup=ReplyKeyboardRemove())
         bot.register_next_step_handler(message, handle_description)
 
     except FileNotFoundError:
@@ -127,7 +127,7 @@ def handle_description(message):
 
         elif message.from_user.id not in data:
             subjects = get_subjects(message.from_user.id)
-            markup = ReplyKeyboardMarkup(one_time_keyboard=True).add(*subjects)
+            markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True).add(*subjects, row_width=1)
             bot.send_message(message.chat.id, 'Something went wrong. Please choose the subject again.',
                              reply_markup=markup)
             bot.register_next_step_handler(message, handle_subject)
