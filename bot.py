@@ -1,10 +1,13 @@
+import time
 import datetime
+from threading import Thread
 
 import telebot
 from telebot.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
+import schedule
 
 from my_token import TOKEN
-from schedule import TIMEZONE, set_schedule, get_schedule, get_subjects, add_homework
+from planning import TIMEZONE, set_schedule, get_schedule, get_subjects, add_homework, delete_past_homework
 
 MARKUP = ReplyKeyboardMarkup(resize_keyboard=True).add('Today', 'Tomorrow', 'Week', 'Homework')
 
@@ -145,8 +148,19 @@ def handle_description(message):
 
 
 def main():
-    bot.polling()
+    bot.polling(none_stop=True)
+
+
+def timer():
+    schedule.every().day.do(delete_past_homework)
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
 
 
 if __name__ == '__main__':
-    main()
+    bot_thread = Thread(target=main, name='BotThread')
+    timer_thread = Thread(target=timer, name='TimerThread')
+
+    bot_thread.start()
+    timer_thread.start()

@@ -56,6 +56,19 @@ def set_schedule(user_id, file):
     if os.path.exists('files/' + str(user_id) + '_homework.json'):
         os.remove('files/' + str(user_id) + '_homework.json')
 
+    users_path = 'files/users.json'
+    if os.path.exists(users_path):
+        with open(users_path) as users_json:
+            users = json.load(users_json)
+    else:
+        users = []
+
+    if user_id not in users:
+        users.append(user_id)
+
+    with open(users_path, mode='w') as users_json:
+        json.dump(users, users_json)
+
 
 def get_schedule(user_id, ordinal_date):
     with open('files/' + str(user_id) + '_subjects.json', 'r', encoding='utf-8') as subjects_json:
@@ -134,3 +147,28 @@ def add_homework(user_id, subject_index, description):
 
     with open(path, 'w', encoding='utf-8') as homework_json:
         json.dump(homework, homework_json, ensure_ascii=False)
+
+
+def delete_past_homework():
+    date = datetime.datetime.now(TIMEZONE).date().toordinal()
+
+    users_path = 'files/users.json'
+    if os.path.exists(users_path):
+        with open(users_path) as users_json:
+            users = json.load(users_json)
+
+        for user in users:
+            homework_path = 'files/{}_homework.json'.format(user)
+            if os.path.exists(homework_path):
+                with open(homework_path, encoding='utf-8') as homework_json:
+                    homework = json.load(homework_json)
+
+                i = 0
+                while i < len(homework):
+                    if homework[i]['Date'] < date - 1:
+                        del homework[i]
+                    else:
+                        i += 1
+
+                with open(homework_path, mode='w', encoding='utf-8') as homework_json:
+                    json.dump(homework, homework_json, ensure_ascii=False)
