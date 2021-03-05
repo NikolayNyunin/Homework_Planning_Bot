@@ -50,7 +50,7 @@ def set_schedule(user_id, file):
                 break
         day_index += 1
 
-    with open('files/' + str(user_id) + '_schedule.json', 'w') as schedule_file:
+    with open('files/' + str(user_id) + '_schedule.json', 'w', encoding='utf-8') as schedule_file:
         json.dump(schedule, schedule_file)
 
     if os.path.exists('files/' + str(user_id) + '_homework.json'):
@@ -58,7 +58,7 @@ def set_schedule(user_id, file):
 
     users_path = 'files/users.json'
     if os.path.exists(users_path):
-        with open(users_path) as users_json:
+        with open(users_path, encoding='utf-8') as users_json:
             users = json.load(users_json)
     else:
         users = []
@@ -66,18 +66,18 @@ def set_schedule(user_id, file):
     if user_id not in users:
         users.append(user_id)
 
-    with open(users_path, mode='w') as users_json:
+    with open(users_path, 'w', encoding='utf-8') as users_json:
         json.dump(users, users_json)
 
 
 def get_schedule(user_id, ordinal_date):
-    with open('files/' + str(user_id) + '_subjects.json', 'r', encoding='utf-8') as subjects_json:
+    with open('files/' + str(user_id) + '_subjects.json', encoding='utf-8') as subjects_json:
         subjects = json.load(subjects_json)
-    with open('files/' + str(user_id) + '_schedule.json', 'r') as schedule_json:
+    with open('files/' + str(user_id) + '_schedule.json', encoding='utf-8') as schedule_json:
         schedule = json.load(schedule_json)
 
     try:
-        with open('files/' + str(user_id) + '_homework.json', 'r', encoding='utf-8') as homework_json:
+        with open('files/' + str(user_id) + '_homework.json', encoding='utf-8') as homework_json:
             homework = json.load(homework_json)
     except FileNotFoundError:
         homework_exists = False
@@ -88,21 +88,32 @@ def get_schedule(user_id, ordinal_date):
     week = date.isocalendar()[1] % 2
     week_day = date.weekday()
 
-    result = '{0} ({1}.{2}):\n\n'.format(WEEK_DAYS[week_day], date.day, str(date.month).zfill(2))
+    result = '<i>{} ({}.{}):</i>\n\n'.format(WEEK_DAYS[week_day], str(date.day).zfill(2), str(date.month).zfill(2))
     if week_day == 6:
         return result + 'No lessons.'
 
     day_schedule = schedule[week][week_day]
+    if day_schedule == [-1] * MAX_LESSONS:
+        return result + 'No lessons.'
+
     for index in range(MAX_LESSONS):
-        result += str(index + 1) + ':\t'
-        if day_schedule[index] == -1:
-            result += 'No lesson.\n\n'
-        else:
-            result += subjects[str(day_schedule[index])]['Subject'] + '\n'
+        subject_index = str(day_schedule[index])
+
+        if subject_index != '-1':
+            result += '{}:   {}\n'.format(index + 1, subjects[subject_index]['Subject'])
+
+            teacher = subjects[subject_index]['Teacher']
+            if teacher is not None:
+                result += teacher + '\n'
+
+            room = subjects[subject_index]['Room']
+            if room is not None:
+                result += room + '\n'
+
             if homework_exists:
                 for h in homework:
                     if h['Date'] == ordinal_date and h['Subject'] == day_schedule[index]:
-                        result += h['Description'] + '\n'
+                        result += '❗<b>{}</b>\n'.format(h['Description'])
 
             result += '\n'
 
@@ -110,7 +121,7 @@ def get_schedule(user_id, ordinal_date):
 
 
 def get_subjects(user_id):
-    with open('files/' + str(user_id) + '_subjects.json', 'r', encoding='utf-8') as subjects_json:
+    with open('files/' + str(user_id) + '_subjects.json', encoding='utf-8') as subjects_json:
         subjects = json.load(subjects_json)
     subjects = [val['Subject'] for val in subjects.values()]
     return subjects
@@ -119,12 +130,12 @@ def get_subjects(user_id):
 def add_homework(user_id, subject_index, description):
     path = 'files/' + str(user_id) + '_homework.json'
     if os.path.exists(path):
-        with open(path, 'r', encoding='utf-8') as homework_json:
+        with open(path, encoding='utf-8') as homework_json:
             homework = json.load(homework_json)
     else:
         homework = []
 
-    with open('files/' + str(user_id) + '_schedule.json', 'r') as schedule_json:
+    with open('files/' + str(user_id) + '_schedule.json', encoding='utf-8') as schedule_json:
         schedule = json.load(schedule_json)
 
     date = datetime.datetime.now(TIMEZONE).date().toordinal() + 1
@@ -154,7 +165,7 @@ def delete_past_homework():
 
     users_path = 'files/users.json'
     if os.path.exists(users_path):
-        with open(users_path) as users_json:
+        with open(users_path, encoding='utf-8') as users_json:
             users = json.load(users_json)
 
         for user in users:
@@ -170,5 +181,5 @@ def delete_past_homework():
                     else:
                         i += 1
 
-                with open(homework_path, mode='w', encoding='utf-8') as homework_json:
+                with open(homework_path, 'w', encoding='utf-8') as homework_json:
                     json.dump(homework, homework_json, ensure_ascii=False)

@@ -9,22 +9,27 @@ import schedule
 from my_token import TOKEN
 from planning import TIMEZONE, set_schedule, get_schedule, get_subjects, add_homework, delete_past_homework
 
-MARKUP = ReplyKeyboardMarkup(resize_keyboard=True).add('Today', 'Tomorrow', 'Week', 'Homework')
+MARKUP = ReplyKeyboardMarkup(resize_keyboard=True).add('Today', 'Tomorrow', 'Week').add('Homework').add('Info')
 
 bot = telebot.TeleBot(TOKEN)
 data = {}
 
 
 @bot.message_handler(commands=['start'])
+@bot.message_handler(func=lambda message: message.text.lower() == 'start')
 def start(message):
     bot.send_message(message.chat.id, 'Welcome to Homework Planning Bot!\n'
-                                      'It can monitor all your homework and notify you about your deadlines.\n'
-                                      'For more information type /info.')
+                                      'Type /info or /help to learn what it can do.')
 
 
-@bot.message_handler(commands=['info'])
+@bot.message_handler(commands=['info', 'help'])
+@bot.message_handler(func=lambda message: message.text.lower() in ('info', 'help'))
 def info(message):
-    bot.send_message(message.chat.id, 'To give bot your schedule send it Excel file.')
+    bot.send_message(message.chat.id, 'This is Homework Planning Bot.\n'
+                                      'It can monitor your homework.\n'
+                                      'To set your schedule, attach .xlsx file with the specific structure.\n'
+                                      'To view your schedule and homework, press "Today", "Tomorrow" or "Week".\n'
+                                      'To add new homework, press "Homework" and follow instructions.')
 
 
 @bot.message_handler(content_types=['document'])
@@ -70,16 +75,16 @@ def handle_text(message):
     try:
         if message.text.lower() == 'today':
             date = datetime.datetime.now(TIMEZONE).date().toordinal()
-            bot.send_message(message.chat.id, get_schedule(message.from_user.id, date))
+            bot.send_message(message.chat.id, get_schedule(message.from_user.id, date), parse_mode='HTML')
 
         elif message.text.lower() == 'tomorrow':
             date = datetime.datetime.now(TIMEZONE).date().toordinal() + 1
-            bot.send_message(message.chat.id, get_schedule(message.from_user.id, date))
+            bot.send_message(message.chat.id, get_schedule(message.from_user.id, date), parse_mode='HTML')
 
         elif message.text.lower() == 'week':
             date = datetime.datetime.now(TIMEZONE).date().toordinal()
             for i in range(7):
-                bot.send_message(message.chat.id, get_schedule(message.from_user.id, date))
+                bot.send_message(message.chat.id, get_schedule(message.from_user.id, date), parse_mode='HTML')
                 date += 1
 
         elif message.text.lower() == 'homework':
