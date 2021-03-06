@@ -90,32 +90,39 @@ def get_schedule(user_id, ordinal_date):
 
     result = '<i>{} ({}.{}):</i>\n\n'.format(WEEK_DAYS[week_day], str(date.day).zfill(2), str(date.month).zfill(2))
     if week_day == 6:
-        return result + 'No lessons.'
+        result += 'No lessons.\n\n'
+        day_schedule = []
+    else:
+        day_schedule = schedule[week][week_day]
+        if day_schedule == [-1] * MAX_LESSONS:
+            result += 'No lessons.\n\n'
+        else:
+            for index in range(MAX_LESSONS):
+                subject_index = str(day_schedule[index])
 
-    day_schedule = schedule[week][week_day]
-    if day_schedule == [-1] * MAX_LESSONS:
-        return result + 'No lessons.'
+                if subject_index != '-1':
+                    result += '{}:   {}\n'.format(index + 1, subjects[subject_index]['Subject'])
 
-    for index in range(MAX_LESSONS):
-        subject_index = str(day_schedule[index])
+                    teacher = subjects[subject_index]['Teacher']
+                    if teacher is not None:
+                        result += teacher + '\n'
 
-        if subject_index != '-1':
-            result += '{}:   {}\n'.format(index + 1, subjects[subject_index]['Subject'])
+                    room = subjects[subject_index]['Room']
+                    if room is not None:
+                        result += room + '\n'
 
-            teacher = subjects[subject_index]['Teacher']
-            if teacher is not None:
-                result += teacher + '\n'
+                    if homework_exists:
+                        for h in homework:
+                            if h['Date'] == ordinal_date and h['Subject'] == day_schedule[index]:
+                                result += '❗<b>{}</b>\n'.format(h['Description'])
 
-            room = subjects[subject_index]['Room']
-            if room is not None:
-                result += room + '\n'
+                    result += '\n'
 
-            if homework_exists:
-                for h in homework:
-                    if h['Date'] == ordinal_date and h['Subject'] == day_schedule[index]:
-                        result += '❗<b>{}</b>\n'.format(h['Description'])
-
-            result += '\n'
+    if homework_exists:
+        for h in homework:
+            if h['Date'] == ordinal_date and h['Subject'] not in day_schedule:
+                result += subjects[str(h['Subject'])]['Subject'] + '\n'
+                result += '❗<b>{}</b>\n\n'.format(h['Description'])
 
     return result
 
@@ -127,7 +134,7 @@ def get_subjects(user_id):
     return subjects
 
 
-def add_homework(user_id, subject_index, description):
+def add_homework(user_id, subject_index, date, description):
     path = 'files/' + str(user_id) + '_homework.json'
     if os.path.exists(path):
         with open(path, encoding='utf-8') as homework_json:
@@ -138,23 +145,27 @@ def add_homework(user_id, subject_index, description):
     with open('files/' + str(user_id) + '_schedule.json', encoding='utf-8') as schedule_json:
         schedule = json.load(schedule_json)
 
-    date = datetime.datetime.now(TIMEZONE).date().toordinal() + 1
-    week = datetime.date.fromordinal(date).isocalendar()[1] % 2
-    week_day = datetime.date.fromordinal(date).weekday()
-    for i in range(14):
-        if week_day == 6:
+    if not date:
+        date = datetime.datetime.now(TIMEZONE).date().toordinal() + 1
+        week = datetime.date.fromordinal(date).isocalendar()[1] % 2
+        week_day = datetime.date.fromordinal(date).weekday()
+        for i in range(14):
+            if week_day == 6:
+                date += 1
+                week = (week + 1) % 2
+                week_day = 0
+                continue
+
+            day_schedule = schedule[week][week_day]
+            if subject_index in day_schedule:
+                homework.append({'Date': date, 'Subject': subject_index, 'Description': description})
+                break
+
             date += 1
-            week = (week + 1) % 2
-            week_day = 0
-            continue
+            week_day += 1
 
-        day_schedule = schedule[week][week_day]
-        if subject_index in day_schedule:
-            homework.append({'Date': date, 'Subject': subject_index, 'Description': description})
-            break
-
-        date += 1
-        week_day += 1
+    else:
+        homework.append({'Date': date, 'Subject': subject_index, 'Description': description})
 
     with open(path, 'w', encoding='utf-8') as homework_json:
         json.dump(homework, homework_json, ensure_ascii=False)

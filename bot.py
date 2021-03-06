@@ -16,20 +16,21 @@ data = {}
 
 
 @bot.message_handler(commands=['start'])
-@bot.message_handler(func=lambda message: message.text.lower() == 'start')
+@bot.message_handler(func=lambda message: message.text is not None and message.text.lower() == 'start')
 def start(message):
     bot.send_message(message.chat.id, 'Welcome to Homework Planning Bot!\n'
-                                      'Type /info or /help to learn what it can do.')
+                                      'Type /info or /help to learn what it can do.', reply_markup=MARKUP)
 
 
 @bot.message_handler(commands=['info', 'help'])
-@bot.message_handler(func=lambda message: message.text.lower() in ('info', 'help'))
+@bot.message_handler(func=lambda message: message.text is not None and message.text.lower() in ('info', 'help'))
 def info(message):
     bot.send_message(message.chat.id, 'This is Homework Planning Bot.\n'
                                       'It can monitor your homework.\n'
                                       'To set your schedule, attach .xlsx file with the specific structure.\n'
                                       'To view your schedule and homework, press "Today", "Tomorrow" or "Week".\n'
-                                      'To add new homework, press "Homework" and follow instructions.')
+                                      'To add new homework, press "Homework" and follow instructions.',
+                     reply_markup=MARKUP)
 
 
 @bot.message_handler(content_types=['document'])
@@ -115,7 +116,65 @@ def handle_subject(message):
             return
 
         index = subjects.index(message.text)
-        data[message.from_user.id] = index
+        data[message.from_user.id] = [index]
+
+        date = datetime.datetime.now(TIMEZONE).date().toordinal() + 1
+        markup = ReplyKeyboardMarkup(resize_keyboard=True).add('Next lesson')
+        dates = ['Today', 'Tomorrow']
+        for i in range(12):
+            date += 1
+            dates.append('{}.{}'.format(str(datetime.date.fromordinal(date).day).zfill(2),
+                                        str(datetime.date.fromordinal(date).month).zfill(2)))
+
+        markup.add(*dates, row_width=7)
+        bot.send_message(message.chat.id, 'Choose the deadline: press one of the buttons '
+                                          'or type your own date in DD.MM format.', reply_markup=markup)
+        bot.register_next_step_handler(message, handle_date)
+
+    except FileNotFoundError:
+        bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
+                                          'Please set your schedule before requesting it.')
+    except Exception as e:
+        bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)))
+
+
+def handle_date(message):
+    try:
+        if message.text is None:
+            bot.send_message(message.chat.id, 'Error: Empty date message.')
+            bot.register_next_step_handler(message, handle_date)
+            return
+
+        elif message.from_user.id not in data:
+            subjects = get_subjects(message.from_user.id)
+            markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True).add(*subjects, row_width=1)
+            bot.send_message(message.chat.id, 'Something went wrong. Please choose the subject again.',
+                             reply_markup=markup)
+            bot.register_next_step_handler(message, handle_subject)
+            return
+
+        text = message.text.lower()
+        if text == 'next lesson':
+            data[message.from_user.id].append(None)
+        elif text == 'today':
+            date = datetime.datetime.now(TIMEZONE).date().toordinal()
+            data[message.from_user.id].append(date)
+        elif text == 'tomorrow':
+            date = datetime.datetime.now(TIMEZONE).date().toordinal() + 1
+            data[message.from_user.id].append(date)
+        else:
+            try:
+                text = text.split('.')
+                ordinal_date = datetime.date(year=datetime.datetime.now(TIMEZONE).year,
+                                             month=int(text[1]), day=int(text[0])).toordinal()
+            except Exception as e:
+                bot.send_message(message.chat.id, 'Error: Incorrect date ({}).\n'
+                                                  'Make sure to type it in DD.MM format.'.format(str(e)))
+                bot.register_next_step_handler(message, handle_date)
+                return
+
+            data[message.from_user.id].append(ordinal_date)
+
         bot.send_message(message.chat.id, 'Write homework description.', reply_markup=ReplyKeyboardRemove())
         bot.register_next_step_handler(message, handle_description)
 
@@ -141,8 +200,8 @@ def handle_description(message):
             bot.register_next_step_handler(message, handle_subject)
             return
 
-        subject = data.pop(message.from_user.id)
-        add_homework(message.from_user.id, subject, message.text)
+        subject, date = data.pop(message.from_user.id)
+        add_homework(message.from_user.id, subject, date, message.text)
         bot.send_message(message.chat.id, 'Homework successfully added.', reply_markup=MARKUP)
 
     except FileNotFoundError:
