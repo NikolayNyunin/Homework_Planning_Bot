@@ -45,7 +45,7 @@ def handle_document(message):
     with open(path, 'wb') as new_file:
         new_file.write(file)
 
-    markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True).add('Yes', 'No')
+    markup = ReplyKeyboardMarkup(resize_keyboard=True).add('Yes', 'No')
     bot.send_message(message.chat.id, 'Are you sure you want to change your schedule?\n'
                                       'This will delete all your recorded homework.', reply_markup=markup)
     bot.register_next_step_handler(message, handle_change_schedule_answer)
@@ -53,8 +53,7 @@ def handle_document(message):
 
 def handle_change_schedule_answer(message):
     if message.text is None or message.text.lower() not in ('yes', 'no'):
-        markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True).add('Yes', 'No')
-        bot.send_message(message.chat.id, 'Incorrect response. Please choose one of the options.', reply_markup=markup)
+        bot.send_message(message.chat.id, 'Incorrect response. Please choose one of the options.')
         bot.register_next_step_handler(message, handle_change_schedule_answer)
 
     elif message.text.lower() == 'yes':
@@ -74,23 +73,24 @@ def handle_change_schedule_answer(message):
 @bot.message_handler(content_types=['text'])
 def handle_text(message):
     try:
-        if message.text.lower() == 'today':
+        text = message.text.lower()
+        if text == 'today':
             date = datetime.datetime.now(TIMEZONE).date().toordinal()
             bot.send_message(message.chat.id, get_schedule(message.from_user.id, date), parse_mode='HTML')
 
-        elif message.text.lower() == 'tomorrow':
+        elif text == 'tomorrow':
             date = datetime.datetime.now(TIMEZONE).date().toordinal() + 1
             bot.send_message(message.chat.id, get_schedule(message.from_user.id, date), parse_mode='HTML')
 
-        elif message.text.lower() == 'week':
+        elif text == 'week':
             date = datetime.datetime.now(TIMEZONE).date().toordinal()
             for i in range(7):
                 bot.send_message(message.chat.id, get_schedule(message.from_user.id, date), parse_mode='HTML')
                 date += 1
 
-        elif message.text.lower() == 'homework':
+        elif text == 'homework':
             subjects = get_subjects(message.from_user.id)
-            markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True).add(*subjects, row_width=1)
+            markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*subjects, row_width=1)
             bot.send_message(message.chat.id, 'Choose the subject.', reply_markup=markup)
             bot.register_next_step_handler(message, handle_subject)
 
@@ -109,24 +109,22 @@ def handle_subject(message):
         subjects = get_subjects(message.from_user.id)
 
         if message.text is None or message.text not in subjects:
-            markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True).add(*subjects, row_width=1)
-            bot.send_message(message.chat.id, 'Incorrect response. Please choose one of the options.',
-                             reply_markup=markup)
+            bot.send_message(message.chat.id, 'Incorrect response. Please choose one of the options.')
             bot.register_next_step_handler(message, handle_subject)
             return
 
         index = subjects.index(message.text)
         data[message.from_user.id] = [index]
 
-        date = datetime.datetime.now(TIMEZONE).date().toordinal() + 1
-        markup = ReplyKeyboardMarkup(resize_keyboard=True).add('Next lesson')
-        dates = ['Today', 'Tomorrow']
+        ordinal_date = datetime.datetime.now(TIMEZONE).date().toordinal() + 1
+        markup = ReplyKeyboardMarkup(resize_keyboard=True).add('Next lesson').add('Today', 'Tomorrow')
+        dates = []
         for i in range(12):
-            date += 1
-            dates.append('{}.{}'.format(str(datetime.date.fromordinal(date).day).zfill(2),
-                                        str(datetime.date.fromordinal(date).month).zfill(2)))
+            ordinal_date += 1
+            date = datetime.date.fromordinal(ordinal_date)
+            dates.append('{}.{}'.format(str(date.day).zfill(2), str(date.month).zfill(2)))
 
-        markup.add(*dates, row_width=7)
+        markup.add(*dates, row_width=4)
         bot.send_message(message.chat.id, 'Choose the deadline: press one of the buttons '
                                           'or type your own date in DD.MM format.', reply_markup=markup)
         bot.register_next_step_handler(message, handle_date)
