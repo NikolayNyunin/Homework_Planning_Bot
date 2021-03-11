@@ -87,11 +87,11 @@ def get_schedule(user_id, ordinal_date):
     date = datetime.date.fromordinal(ordinal_date)
     week = date.isocalendar()[1] % 2
     week_day = date.weekday()
+    ordinal_date = str(ordinal_date)
 
     result = '<i>{} ({}.{}):</i>\n\n'.format(WEEK_DAYS[week_day], str(date.day).zfill(2), str(date.month).zfill(2))
     if week_day == 6:
         result += 'No lessons.\n\n'
-        day_schedule = []
     else:
         day_schedule = schedule[week][week_day]
         if day_schedule == [-1] * MAX_LESSONS:
@@ -112,19 +112,34 @@ def get_schedule(user_id, ordinal_date):
                         result += room + '\n'
 
                     if homework_exists:
-                        for h in homework:
-                            if h['Date'] == ordinal_date and h['Subject'] == day_schedule[index]:
-                                result += '❗<b>{}</b>\n'.format(h['Description'])
+                        if ordinal_date in homework:
+                            for h in homework[ordinal_date]:
+                                if h['Subject'] == day_schedule[index] and h['For lesson']:
+                                    result += '❗<b>{}</b>\n'.format(h['Description'])
 
                     result += '\n'
 
     if homework_exists:
-        for h in homework:
-            if h['Date'] == ordinal_date and h['Subject'] not in day_schedule:
-                result += subjects[str(h['Subject'])]['Subject'] + '\n'
-                result += '❗<b>{}</b>\n\n'.format(h['Description'])
+        if ordinal_date in homework:
+            for h in homework[ordinal_date]:
+                if not h['For lesson']:
+                    result += subjects[str(h['Subject'])]['Subject'] + '\n'
+                    result += '❗<b>{}</b>\n\n'.format(h['Description'])
 
     return result
+
+
+def in_schedule(user_id, ordinal_date, subject_index):
+    with open('files/' + str(user_id) + '_schedule.json', encoding='utf-8') as schedule_json:
+        schedule = json.load(schedule_json)
+
+    date = datetime.date.fromordinal(ordinal_date)
+    week = date.isocalendar()[1] % 2
+    week_day = date.weekday()
+    if week_day == 6:
+        return False
+
+    return subject_index in schedule[week][week_day]
 
 
 def get_subjects(user_id):
@@ -134,13 +149,13 @@ def get_subjects(user_id):
     return subjects
 
 
-def add_homework(user_id, subject_index, date, description):
+def add_homework(user_id, subject_index, date, for_lesson, description):
     path = 'files/' + str(user_id) + '_homework.json'
     if os.path.exists(path):
         with open(path, encoding='utf-8') as homework_json:
             homework = json.load(homework_json)
     else:
-        homework = []
+        homework = {}
 
     with open('files/' + str(user_id) + '_schedule.json', encoding='utf-8') as schedule_json:
         schedule = json.load(schedule_json)
@@ -158,17 +173,24 @@ def add_homework(user_id, subject_index, date, description):
 
             day_schedule = schedule[week][week_day]
             if subject_index in day_schedule:
-                homework.append({'Date': date, 'Subject': subject_index, 'Description': description})
+                str_date = str(date)
+                if str_date not in homework:
+                    homework[str_date] = []
+                homework[str_date].append({'Subject': subject_index, 'For lesson': for_lesson,
+                                           'Description': description})
                 break
 
             date += 1
             week_day += 1
 
     else:
-        homework.append({'Date': date, 'Subject': subject_index, 'Description': description})
+        date = str(date)
+        if date not in homework:
+            homework[date] = []
+        homework[date].append({'Subject': subject_index, 'For lesson': for_lesson, 'Description': description})
 
     with open(path, 'w', encoding='utf-8') as homework_json:
-        json.dump(homework, homework_json, ensure_ascii=False)
+        json.dump(homework, homework_json, ensure_ascii=False, indent=4)
 
 
 def delete_past_homework():
@@ -185,12 +207,11 @@ def delete_past_homework():
                 with open(homework_path, encoding='utf-8') as homework_json:
                     homework = json.load(homework_json)
 
-                i = 0
-                while i < len(homework):
-                    if homework[i]['Date'] < date - 1:
-                        del homework[i]
+                for d in sorted(map(int, homework.keys())):
+                    if d < date - 1:
+                        del homework[d]
                     else:
-                        i += 1
+                        break
 
                 with open(homework_path, 'w', encoding='utf-8') as homework_json:
-                    json.dump(homework, homework_json, ensure_ascii=False)
+                    json.dump(homework, homework_json, ensure_ascii=False, indent=4)

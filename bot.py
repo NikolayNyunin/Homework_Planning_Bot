@@ -7,7 +7,7 @@ from telebot.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
 import schedule
 
 from my_token import TOKEN
-from planning import TIMEZONE, set_schedule, get_schedule, get_subjects, add_homework, delete_past_homework
+from planning import TIMEZONE, set_schedule, get_schedule, in_schedule, get_subjects, add_homework, delete_past_homework
 
 MARKUP = ReplyKeyboardMarkup(resize_keyboard=True).add('Today', 'Tomorrow', 'Week').add('Homework').add('Info')
 
@@ -145,7 +145,7 @@ def handle_date(message):
 
         elif message.from_user.id not in data:
             subjects = get_subjects(message.from_user.id)
-            markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True).add(*subjects, row_width=1)
+            markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*subjects, row_width=1)
             bot.send_message(message.chat.id, 'Something went wrong. Please choose the subject again.',
                              reply_markup=markup)
             bot.register_next_step_handler(message, handle_subject)
@@ -173,6 +173,48 @@ def handle_date(message):
 
             data[message.from_user.id].append(ordinal_date)
 
+        subject, date = data[message.from_user.id]
+        if date and in_schedule(message.from_user.id, date, subject):
+            bot.send_message(message.chat.id, 'Is this deadline set for the lesson or the end of the day?',
+                             reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add('Lesson', 'Day'))
+            bot.register_next_step_handler(message, handle_type)
+            return
+        elif date:
+            data[message.from_user.id].append(False)
+        else:
+            data[message.from_user.id].append(True)
+
+        bot.send_message(message.chat.id, 'Write homework description.', reply_markup=ReplyKeyboardRemove())
+        bot.register_next_step_handler(message, handle_description)
+
+    except FileNotFoundError:
+        bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
+                                          'Please set your schedule before requesting it.')
+    except Exception as e:
+        bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)))
+
+
+def handle_type(message):
+    try:
+        if message.text is None or message.text.lower() not in ('lesson', 'day'):
+            bot.send_message(message.chat.id, 'Incorrect response. Please choose one of the options.')
+            bot.register_next_step_handler(message, handle_type)
+            return
+
+        elif message.from_user.id not in data:
+            subjects = get_subjects(message.from_user.id)
+            markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*subjects, row_width=1)
+            bot.send_message(message.chat.id, 'Something went wrong. Please choose the subject again.',
+                             reply_markup=markup)
+            bot.register_next_step_handler(message, handle_subject)
+            return
+
+        text = message.text.lower()
+        if text == 'lesson':
+            data[message.from_user.id].append(True)
+        elif text == 'day':
+            data[message.from_user.id].append(False)
+
         bot.send_message(message.chat.id, 'Write homework description.', reply_markup=ReplyKeyboardRemove())
         bot.register_next_step_handler(message, handle_description)
 
@@ -192,14 +234,14 @@ def handle_description(message):
 
         elif message.from_user.id not in data:
             subjects = get_subjects(message.from_user.id)
-            markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True).add(*subjects, row_width=1)
+            markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*subjects, row_width=1)
             bot.send_message(message.chat.id, 'Something went wrong. Please choose the subject again.',
                              reply_markup=markup)
             bot.register_next_step_handler(message, handle_subject)
             return
 
-        subject, date = data.pop(message.from_user.id)
-        add_homework(message.from_user.id, subject, date, message.text)
+        subject, date, for_lesson = data.pop(message.from_user.id)
+        add_homework(message.from_user.id, subject, date, for_lesson, message.text)
         bot.send_message(message.chat.id, 'Homework successfully added.', reply_markup=MARKUP)
 
     except FileNotFoundError:
