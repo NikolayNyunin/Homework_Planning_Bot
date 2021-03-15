@@ -113,18 +113,27 @@ def get_schedule(user_id, ordinal_date):
 
                     if homework_exists:
                         if ordinal_date in homework:
+                            subject_passed = False
                             for h in homework[ordinal_date]:
-                                if h['Subject'] == day_schedule[index] and h['For lesson']:
-                                    result += '❗<b>{}</b>\n'.format(h['Description'])
+                                if h['Subject'] != day_schedule[index] and subject_passed:
+                                    break
+                                elif h['Subject'] == day_schedule[index]:
+                                    if not subject_passed:
+                                        subject_passed = True
+                                    if h['For lesson']:
+                                        result += '❗<b>{}</b>\n'.format(h['Description'])
 
                     result += '\n'
 
     if homework_exists:
         if ordinal_date in homework:
+            subject = None
             for h in homework[ordinal_date]:
                 if not h['For lesson']:
-                    result += subjects[str(h['Subject'])]['Subject'] + '\n'
-                    result += '❗<b>{}</b>\n\n'.format(h['Description'])
+                    if subject != h['Subject']:
+                        subject = h['Subject']
+                        result += '\n' + subjects[str(subject)]['Subject'] + '\n'
+                    result += '❗<b>{}</b>\n'.format(h['Description'])
 
     return result
 
@@ -173,21 +182,16 @@ def add_homework(user_id, subject_index, date, for_lesson, description):
 
             day_schedule = schedule[week][week_day]
             if subject_index in day_schedule:
-                str_date = str(date)
-                if str_date not in homework:
-                    homework[str_date] = []
-                homework[str_date].append({'Subject': subject_index, 'For lesson': for_lesson,
-                                           'Description': description})
                 break
 
             date += 1
             week_day += 1
 
-    else:
-        date = str(date)
-        if date not in homework:
-            homework[date] = []
-        homework[date].append({'Subject': subject_index, 'For lesson': for_lesson, 'Description': description})
+    date = str(date)
+    if date not in homework:
+        homework[date] = []
+    homework[date].append({'Subject': subject_index, 'For lesson': for_lesson, 'Description': description})
+    homework[date].sort(key=lambda el: el['Subject'])
 
     with open(path, 'w', encoding='utf-8') as homework_json:
         json.dump(homework, homework_json, ensure_ascii=False, indent=4)
@@ -215,3 +219,59 @@ def delete_past_homework():
 
                 with open(homework_path, 'w', encoding='utf-8') as homework_json:
                     json.dump(homework, homework_json, ensure_ascii=False, indent=4)
+
+
+def get_notifications():
+    date = datetime.datetime.now(TIMEZONE).date().toordinal()
+
+    users_path = 'files/users.json'
+    if not os.path.exists(users_path):
+        return None
+
+    with open(users_path, encoding='utf-8') as users_json:
+        users = json.load(users_json)
+
+    result = []
+    for user in users:
+        homework_path = 'files/{}_homework.json'.format(user)
+        if not os.path.exists(homework_path):
+            continue
+        try:
+            subjects = get_subjects(user)
+        except FileNotFoundError:
+            continue
+
+        with open(homework_path, encoding='utf-8') as homework_json:
+            homework = json.load(homework_json)
+
+        text = ''
+        today, tomorrow = False, False
+        if str(date) in homework:
+            subject = None
+            for h in homework[str(date)]:
+                if not h['For lesson']:
+                    if not today:
+                        text += '<i>Today (until the end of the day):</i>\n'
+                        today = True
+                    if subject != h['Subject']:
+                        subject = h['Subject']
+                        text += '\n' + str(subjects[subject]) + '\n'
+                    text += '❗<b>{}</b>\n'.format(h['Description'])
+            text += '\n\n'
+
+        if str(date + 1) in homework:
+            subject = None
+            for h in homework[str(date + 1)]:
+                if h['For lesson']:
+                    if not tomorrow:
+                        text += '<i>Tomorrow (only for the lessons):</i>\n'
+                        tomorrow = True
+                    if subject != h['Subject']:
+                        subject = h['Subject']
+                        text += '\n' + str(subjects[subject]) + '\n'
+                    text += '❗<b>{}</b>\n'.format(h['Description'])
+
+        if today or tomorrow:
+            result.append((user, text))
+
+    return result

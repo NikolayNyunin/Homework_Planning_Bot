@@ -1,5 +1,4 @@
 import time
-import datetime
 from threading import Thread
 
 import telebot
@@ -7,7 +6,7 @@ from telebot.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
 import schedule
 
 from my_token import TOKEN
-from planning import TIMEZONE, set_schedule, get_schedule, in_schedule, get_subjects, add_homework, delete_past_homework
+from planning import *
 
 MARKUP = ReplyKeyboardMarkup(resize_keyboard=True).add('Today', 'Tomorrow', 'Week').add('Homework').add('Info')
 
@@ -251,12 +250,22 @@ def handle_description(message):
         bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)))
 
 
+def send_notifications():
+    notifications = get_notifications()
+    if not notifications:
+        return
+
+    for n in notifications:
+        bot.send_message(n[0], n[1], parse_mode='HTML')
+
+
 def main():
     bot.polling(none_stop=True)
 
 
 def timer():
     schedule.every().day.do(delete_past_homework)
+    schedule.every().day.at('18:00').do(send_notifications)
     while True:
         schedule.run_pending()
         time.sleep(1)
