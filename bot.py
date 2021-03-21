@@ -1,4 +1,5 @@
 import time
+import datetime
 from threading import Thread
 
 import telebot
@@ -6,12 +7,34 @@ from telebot.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
 import schedule
 
 from my_token import TOKEN
-from planning import *
+from planning import TIMEZONE, set_schedule, get_schedule, in_schedule, get_subjects, add_homework,\
+    delete_past_homework, get_notifications
 
 MARKUP = ReplyKeyboardMarkup(resize_keyboard=True).add('Today', 'Tomorrow', 'Week').add('Homework').add('Info')
 
 bot = telebot.TeleBot(TOKEN)
 data = {}
+
+
+def check_cancel(message):
+    if message.text.lower() in ('cancel', '❌ cancel ❌'):
+        if message.from_user.id in data:
+            del data[message.from_user.id]
+        bot.send_message(message.chat.id, 'Homework adding was cancelled.', reply_markup=MARKUP)
+        return True
+
+    return False
+
+
+def check_data(message):
+    if message.from_user.id not in data:
+        subjects = get_subjects(message.from_user.id)
+        markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*subjects, row_width=1).add('❌ Cancel ❌')
+        bot.send_message(message.chat.id, 'Something went wrong. Please choose the subject again.', reply_markup=markup)
+        bot.register_next_step_handler(message, handle_subject)
+        return True
+
+    return False
 
 
 @bot.message_handler(commands=['start'])
@@ -28,14 +51,15 @@ def info(message):
                                       'It can monitor your homework.\n'
                                       'To set your schedule, attach .xlsx file with the specific structure.\n'
                                       'To view your schedule and homework, press "Today", "Tomorrow" or "Week".\n'
-                                      'To add new homework, press "Homework" and follow instructions.',
-                     reply_markup=MARKUP)
+                                      'To add new homework, press "Homework" and follow instructions.\n'
+                                      'You can cancel adding this homework by typing "Cancel" or pressing '
+                                      'the corresponding button.', reply_markup=MARKUP)
 
 
 @bot.message_handler(content_types=['document'])
 def handle_document(message):
     if not message.document.file_name.endswith('.xlsx'):
-        bot.send_message(message.chat.id, 'Unsupported file type.')
+        bot.send_message(message.chat.id, 'Error: Unsupported file type.')
         return
 
     file_info = bot.get_file(message.document.file_id)
@@ -52,7 +76,7 @@ def handle_document(message):
 
 def handle_change_schedule_answer(message):
     if message.text is None or message.text.lower() not in ('yes', 'no'):
-        bot.send_message(message.chat.id, 'Incorrect response. Please choose one of the options.')
+        bot.send_message(message.chat.id, 'Error: Incorrect response.\nPlease choose one of the options.')
         bot.register_next_step_handler(message, handle_change_schedule_answer)
 
     elif message.text.lower() == 'yes':
@@ -89,12 +113,12 @@ def handle_text(message):
 
         elif text == 'homework':
             subjects = get_subjects(message.from_user.id)
-            markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*subjects, row_width=1)
+            markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*subjects, row_width=1).add('❌ Cancel ❌')
             bot.send_message(message.chat.id, 'Choose the subject.', reply_markup=markup)
             bot.register_next_step_handler(message, handle_subject)
 
         else:
-            bot.send_message(message.chat.id, "Bot couldn't understand you.", reply_markup=MARKUP)
+            bot.send_message(message.chat.id, "Bot didn't understand you.", reply_markup=MARKUP)
 
     except FileNotFoundError:
         bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
@@ -105,10 +129,18 @@ def handle_text(message):
 
 def handle_subject(message):
     try:
+        if message.text is None:
+            bot.send_message(message.chat.id, 'Error: Empty response.\nPlease choose one of the options.')
+            bot.register_next_step_handler(message, handle_subject)
+            return
+
+        elif check_cancel(message):
+            return
+
         subjects = get_subjects(message.from_user.id)
 
-        if message.text is None or message.text not in subjects:
-            bot.send_message(message.chat.id, 'Incorrect response. Please choose one of the options.')
+        if message.text not in subjects:
+            bot.send_message(message.chat.id, 'Error: Incorrect response.\nPlease choose one of the options.')
             bot.register_next_step_handler(message, handle_subject)
             return
 
@@ -123,7 +155,7 @@ def handle_subject(message):
             date = datetime.date.fromordinal(ordinal_date)
             dates.append('{}.{}'.format(str(date.day).zfill(2), str(date.month).zfill(2)))
 
-        markup.add(*dates, row_width=4)
+        markup.add(*dates, row_width=4).add('❌ Cancel ❌')
         bot.send_message(message.chat.id, 'Choose the deadline: press one of the buttons '
                                           'or type your own date in DD.MM format.', reply_markup=markup)
         bot.register_next_step_handler(message, handle_date)
@@ -142,12 +174,7 @@ def handle_date(message):
             bot.register_next_step_handler(message, handle_date)
             return
 
-        elif message.from_user.id not in data:
-            subjects = get_subjects(message.from_user.id)
-            markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*subjects, row_width=1)
-            bot.send_message(message.chat.id, 'Something went wrong. Please choose the subject again.',
-                             reply_markup=markup)
-            bot.register_next_step_handler(message, handle_subject)
+        elif check_cancel(message) or check_data(message):
             return
 
         text = message.text.lower()
@@ -175,7 +202,8 @@ def handle_date(message):
         subject, date = data[message.from_user.id]
         if date and in_schedule(message.from_user.id, date, subject):
             bot.send_message(message.chat.id, 'Is this deadline set for the lesson or the end of the day?',
-                             reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add('Lesson', 'Day'))
+                             reply_markup=ReplyKeyboardMarkup(resize_keyboard=True)
+                             .add('Lesson', 'Day').add('❌ Cancel ❌'))
             bot.register_next_step_handler(message, handle_type)
             return
         elif date:
@@ -183,7 +211,8 @@ def handle_date(message):
         else:
             data[message.from_user.id].append(True)
 
-        bot.send_message(message.chat.id, 'Write homework description.', reply_markup=ReplyKeyboardRemove())
+        bot.send_message(message.chat.id, 'Write homework description. Type "Cancel" to cancel adding the homework.',
+                         reply_markup=ReplyKeyboardRemove())
         bot.register_next_step_handler(message, handle_description)
 
     except FileNotFoundError:
@@ -195,17 +224,12 @@ def handle_date(message):
 
 def handle_type(message):
     try:
-        if message.text is None or message.text.lower() not in ('lesson', 'day'):
-            bot.send_message(message.chat.id, 'Incorrect response. Please choose one of the options.')
+        if message.text is None or message.text.lower() not in ('lesson', 'day', 'cancel', '❌ cancel ❌'):
+            bot.send_message(message.chat.id, 'Error: Incorrect response.\nPlease choose one of the options.')
             bot.register_next_step_handler(message, handle_type)
             return
 
-        elif message.from_user.id not in data:
-            subjects = get_subjects(message.from_user.id)
-            markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*subjects, row_width=1)
-            bot.send_message(message.chat.id, 'Something went wrong. Please choose the subject again.',
-                             reply_markup=markup)
-            bot.register_next_step_handler(message, handle_subject)
+        elif check_cancel(message) or check_data(message):
             return
 
         text = message.text.lower()
@@ -214,7 +238,8 @@ def handle_type(message):
         elif text == 'day':
             data[message.from_user.id].append(False)
 
-        bot.send_message(message.chat.id, 'Write homework description.', reply_markup=ReplyKeyboardRemove())
+        bot.send_message(message.chat.id, 'Write homework description. Type "Cancel" to cancel adding the homework.',
+                         reply_markup=ReplyKeyboardRemove())
         bot.register_next_step_handler(message, handle_description)
 
     except FileNotFoundError:
@@ -231,12 +256,7 @@ def handle_description(message):
             bot.register_next_step_handler(message, handle_description)
             return
 
-        elif message.from_user.id not in data:
-            subjects = get_subjects(message.from_user.id)
-            markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*subjects, row_width=1)
-            bot.send_message(message.chat.id, 'Something went wrong. Please choose the subject again.',
-                             reply_markup=markup)
-            bot.register_next_step_handler(message, handle_subject)
+        elif check_cancel(message) or check_data(message):
             return
 
         subject, date, for_lesson = data.pop(message.from_user.id)

@@ -4,7 +4,7 @@ import pytz
 import json
 from itertools import islice
 
-import pandas as pd
+from pandas import ExcelFile
 
 MAX_LESSONS = 5
 WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -12,7 +12,7 @@ TIMEZONE = pytz.timezone('Europe/Moscow')
 
 
 def set_schedule(user_id, file):
-    file = pd.ExcelFile(file)
+    file = ExcelFile(file)
     df = file.parse(file.sheet_names[0])
 
     subjects = df[df.columns[:3]].to_dict('index')
@@ -213,7 +213,7 @@ def delete_past_homework():
 
                 for d in sorted(map(int, homework.keys())):
                     if d < date - 1:
-                        del homework[d]
+                        del homework[str(d)]
                     else:
                         break
 
