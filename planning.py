@@ -197,6 +197,87 @@ def add_homework(user_id, subject_index, date, for_lesson, description):
         json.dump(homework, homework_json, ensure_ascii=False, indent=4)
 
 
+def get_dates(user_id):
+    try:
+        with open('files/{}_homework.json'.format(user_id), encoding='utf-8') as homework_json:
+            homework = json.load(homework_json)
+    except FileNotFoundError:
+        return None
+    if not homework:
+        return None
+
+    today = datetime.datetime.now(TIMEZONE).date().toordinal()
+    dates = []
+    for ordinal_date in sorted(map(int, homework.keys())):
+        ordinal_date = int(ordinal_date)
+        if ordinal_date < today:
+            continue
+        elif ordinal_date == today:
+            dates.append('Today')
+        elif ordinal_date == today + 1:
+            dates.append('Tomorrow')
+        else:
+            date = datetime.date.fromordinal(ordinal_date)
+            dates.append('{}.{}'.format(str(date.day).zfill(2), str(date.month).zfill(2)))
+
+    return dates
+
+
+def get_homework(user_id, ordinal_date):
+    try:
+        with open('files/{}_homework.json'.format(user_id), encoding='utf-8') as homework_json:
+            homework = json.load(homework_json)
+        subjects = get_subjects(user_id)
+    except FileNotFoundError:
+        return None
+
+    ordinal_date = str(ordinal_date)
+    if not homework or ordinal_date not in homework:
+        return None
+
+    result = []
+    for h in homework[ordinal_date]:
+        result.append('{} ({}):   {}'.format(subjects[h['Subject']], 'lesson' if h['For lesson'] else 'day',
+                                             h['Description']))
+
+    return result
+
+
+def delete_homework(user_id, ordinal_date, homework_str):
+    homework_path = 'files/{}_homework.json'.format(user_id)
+    with open(homework_path, encoding='utf-8') as homework_json:
+        homework = json.load(homework_json)
+    subjects = get_subjects(user_id)
+    ordinal_date = str(ordinal_date)
+
+    homework_str = homework_str.split('):   ')
+    description = homework_str[-1]
+    homework_type_str = homework_str[0].split('(')[-1]
+    homework_type = True if homework_type_str == 'lesson' else False
+    subject = homework_str[0].split(' ({}'.format(homework_type_str))[0]
+    subject_index = subjects.index(subject)
+
+    passed_subject = False
+    for i in range(len(homework[ordinal_date])):
+        h = homework[ordinal_date][i]
+        if h['Subject'] != subject_index:
+            if passed_subject:
+                break
+            continue
+
+        if not passed_subject:
+            passed_subject = True
+        if h['For lesson'] == homework_type and h['Description'] == description:
+            del homework[ordinal_date][i]
+            if not homework[ordinal_date]:
+                del homework[ordinal_date]
+            with open(homework_path, 'w', encoding='utf-8') as homework_json:
+                json.dump(homework, homework_json, ensure_ascii=False, indent=4)
+            return True
+
+    raise Exception('Could not find the homework to delete')
+
+
 def delete_past_homework():
     date = datetime.datetime.now(TIMEZONE).date().toordinal()
 

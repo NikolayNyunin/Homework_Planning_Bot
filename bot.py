@@ -7,20 +7,21 @@ from telebot.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
 import schedule
 
 from my_token import TOKEN
-from planning import TIMEZONE, set_schedule, get_schedule, in_schedule, get_subjects, add_homework,\
-    delete_past_homework, get_notifications
+from planning import TIMEZONE, set_schedule, get_schedule, in_schedule, get_subjects, add_homework, get_dates,\
+    get_homework, delete_homework, delete_past_homework, get_notifications
 
-MARKUP = ReplyKeyboardMarkup(resize_keyboard=True).add('Today', 'Tomorrow', 'Week').add('Homework').add('Info')
+MARKUP = ReplyKeyboardMarkup(resize_keyboard=True).add('Today', 'Tomorrow', 'Week').add('Add', 'Delete').add('Info')
 
 bot = telebot.TeleBot(TOKEN)
 data = {}
 
 
-def check_cancel(message):
+def check_cancel(message, adding=True):
     if message.text.lower() in ('cancel', '❌ cancel ❌'):
         if message.from_user.id in data:
             del data[message.from_user.id]
-        bot.send_message(message.chat.id, 'Homework adding was cancelled.', reply_markup=MARKUP)
+        bot.send_message(message.chat.id, 'Homework {} was cancelled.'.format('adding' if adding else 'deleting'),
+                         reply_markup=MARKUP)
         return True
 
     return False
@@ -28,13 +29,28 @@ def check_cancel(message):
 
 def check_data(message):
     if message.from_user.id not in data:
-        subjects = get_subjects(message.from_user.id)
-        markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*subjects, row_width=1).add('❌ Cancel ❌')
-        bot.send_message(message.chat.id, 'Something went wrong. Please choose the subject again.', reply_markup=markup)
-        bot.register_next_step_handler(message, handle_subject)
+        bot.send_message(message.chat.id, 'Something went wrong. Please try again.')
         return True
 
     return False
+
+
+def process_date(message, function):
+    try:
+        text = message.text.split('.')
+        date = datetime.date(year=datetime.datetime.now(TIMEZONE).year,
+                             month=int(text[1]), day=int(text[0])).toordinal()
+        if date < datetime.datetime.now(TIMEZONE).date().toordinal():
+            bot.send_message(message.chat.id, 'Error: Past date.\n'
+                                              'Please enter a future or present date.')
+            bot.register_next_step_handler(message, function)
+        else:
+            return date
+
+    except Exception as e:
+        bot.send_message(message.chat.id, 'Error: Incorrect date ({}).\n'
+                                          'Make sure to type it in DD.MM format.'.format(str(e)))
+        bot.register_next_step_handler(message, function)
 
 
 @bot.message_handler(commands=['start'])
@@ -51,8 +67,9 @@ def info(message):
                                       'It can monitor your homework.\n'
                                       'To set your schedule, attach .xlsx file with the specific structure.\n'
                                       'To view your schedule and homework, press "Today", "Tomorrow" or "Week".\n'
-                                      'To add new homework, press "Homework" and follow instructions.\n'
-                                      'You can cancel adding this homework by typing "Cancel" or pressing '
+                                      'To add new homework, press "Add" and follow instructions.\n'
+                                      'To delete existing homework, press "Delete".\n'
+                                      'You can cancel adding or deleting homework by typing "Cancel" or pressing '
                                       'the corresponding button.', reply_markup=MARKUP)
 
 
@@ -111,11 +128,22 @@ def handle_text(message):
                 bot.send_message(message.chat.id, get_schedule(message.from_user.id, date), parse_mode='HTML')
                 date += 1
 
-        elif text == 'homework':
+        elif text == 'add':
             subjects = get_subjects(message.from_user.id)
             markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*subjects, row_width=1).add('❌ Cancel ❌')
             bot.send_message(message.chat.id, 'Choose the subject.', reply_markup=markup)
             bot.register_next_step_handler(message, handle_subject)
+
+        elif text == 'delete':
+            dates = get_dates(message.from_user.id)
+            if not dates:
+                bot.send_message(message.chat.id, 'You have no recorded homework to delete.')
+                return
+
+            markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*dates, row_width=3).add('❌ Cancel ❌')
+            bot.send_message(message.chat.id, 'Choose the date of the homework you wish to delete '
+                                              '(or type it as DD.MM)', reply_markup=markup)
+            bot.register_next_step_handler(message, handle_existing_date)
 
         else:
             bot.send_message(message.chat.id, "Bot didn't understand you.", reply_markup=MARKUP)
@@ -158,7 +186,7 @@ def handle_subject(message):
         markup.add(*dates, row_width=4).add('❌ Cancel ❌')
         bot.send_message(message.chat.id, 'Choose the deadline: press one of the buttons '
                                           'or type your own date in DD.MM format.', reply_markup=markup)
-        bot.register_next_step_handler(message, handle_date)
+        bot.register_next_step_handler(message, handle_new_date)
 
     except FileNotFoundError:
         bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
@@ -167,11 +195,11 @@ def handle_subject(message):
         bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)))
 
 
-def handle_date(message):
+def handle_new_date(message):
     try:
         if message.text is None:
             bot.send_message(message.chat.id, 'Error: Empty date message.')
-            bot.register_next_step_handler(message, handle_date)
+            bot.register_next_step_handler(message, handle_new_date)
             return
 
         elif check_cancel(message) or check_data(message):
@@ -187,17 +215,11 @@ def handle_date(message):
             date = datetime.datetime.now(TIMEZONE).date().toordinal() + 1
             data[message.from_user.id].append(date)
         else:
-            try:
-                text = text.split('.')
-                ordinal_date = datetime.date(year=datetime.datetime.now(TIMEZONE).year,
-                                             month=int(text[1]), day=int(text[0])).toordinal()
-            except Exception as e:
-                bot.send_message(message.chat.id, 'Error: Incorrect date ({}).\n'
-                                                  'Make sure to type it in DD.MM format.'.format(str(e)))
-                bot.register_next_step_handler(message, handle_date)
+            date = process_date(message, handle_new_date)
+            if not date:
                 return
 
-            data[message.from_user.id].append(ordinal_date)
+            data[message.from_user.id].append(date)
 
         subject, date = data[message.from_user.id]
         if date and in_schedule(message.from_user.id, date, subject):
@@ -268,6 +290,57 @@ def handle_description(message):
                                           'Please set your schedule before requesting it.')
     except Exception as e:
         bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)))
+
+
+def handle_existing_date(message):
+    if message.text is None:
+        bot.send_message(message.chat.id, 'Error: Empty date message.')
+        bot.register_next_step_handler(message, handle_existing_date)
+        return
+
+    elif check_cancel(message, adding=False):
+        return
+
+    text = message.text.lower()
+    if text == 'today':
+        date = datetime.datetime.now(TIMEZONE).date().toordinal()
+    elif text == 'tomorrow':
+        date = datetime.datetime.now(TIMEZONE).date().toordinal() + 1
+    else:
+        date = process_date(message, handle_existing_date)
+        if not date:
+            return
+
+    homework = get_homework(message.from_user.id, date)
+    if not homework:
+        bot.send_message(message.chat.id, 'You have no recorded homework for that date.\nChoose the date again.')
+        bot.register_next_step_handler(message, handle_existing_date)
+        return
+
+    data[message.from_user.id] = date
+    markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*homework, row_width=1).add('❌ Cancel ❌')
+    bot.send_message(message.chat.id, 'Choose the homework to delete.', reply_markup=markup)
+    bot.register_next_step_handler(message, handle_homework)
+
+
+def handle_homework(message):
+    if message.text is None:
+        bot.send_message(message.chat.id, 'Error: Empty homework message.')
+        bot.register_next_step_handler(message, handle_homework)
+        return
+
+    elif check_cancel(message, adding=False) or check_data(message):
+        return
+
+    try:
+        delete_homework(message.from_user.id, data[message.from_user.id], message.text)
+        bot.send_message(message.chat.id, 'Homework deleted successfully.', reply_markup=MARKUP)
+        del data[message.from_user.id]
+
+    except Exception as e:
+        bot.send_message(message.chat.id, 'Error: {}.\n'
+                                          'Choose the homework you want to delete again.'.format(e))
+        bot.register_next_step_handler(message, handle_homework)
 
 
 def send_notifications():
