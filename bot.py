@@ -27,7 +27,7 @@ def check_cancel(message, adding=True):
     return False
 
 
-def process_date(message, function):
+def process_date(message, function=None):
     try:
         text = message.text.split('.')
         day, month = map(int, text)
@@ -42,35 +42,40 @@ def process_date(message, function):
         if date < current_date.toordinal():
             bot.send_message(message.chat.id, 'Error: Past date.\n'
                                               'Please enter a future or present date.')
-            bot.register_next_step_handler(message, function)
+            if function:
+                bot.register_next_step_handler(message, function)
         else:
             return date
 
     except Exception as e:
-        bot.send_message(message.chat.id, 'Error: Incorrect date ({}).\n'
-                                          'Make sure to type it in <b>DD.⁠MM</b> format.'.format(str(e)),
-                         parse_mode='HTML')
-        bot.register_next_step_handler(message, function)
+        if function:
+            bot.send_message(message.chat.id, 'Error: Incorrect date ({}).\n'
+                                              'Make sure to type it in <b>DD.⁠MM</b> format.'.format(str(e)),
+                             parse_mode='HTML')
+            bot.register_next_step_handler(message, function)
+        return False
 
 
 @bot.message_handler(commands=['start'])
 @bot.message_handler(func=lambda message: message.text is not None and message.text.lower() == 'start')
 def start(message):
-    bot.send_message(message.chat.id, 'Welcome to Homework Planning Bot!\n'
-                                      'Type /info or /help to learn what it can do.', reply_markup=MARKUP)
+    bot.send_message(message.chat.id, 'Welcome to <b>Homework Planning Bot</b>!\n'
+                                      'Type /info or /help to learn what it can do.',
+                     reply_markup=MARKUP, parse_mode='HTML')
 
 
 @bot.message_handler(commands=['info', 'help'])
 @bot.message_handler(func=lambda message: message.text is not None and message.text.lower() in ('info', 'help'))
 def info(message):
-    bot.send_message(message.chat.id, 'This is Homework Planning Bot.\n'
+    bot.send_message(message.chat.id, 'This is <b>Homework Planning Bot</b>.\n'
                                       'It can monitor your homework.\n'
                                       'To set your schedule, attach .xlsx file with the specific structure.\n'
-                                      'To view your schedule and homework, press "Today", "Tomorrow" or "Week".\n'
-                                      'To add new homework, press "Add" and follow instructions.\n'
-                                      'To delete existing homework, press "Delete".\n'
-                                      'You can cancel adding or deleting homework by typing "Cancel" or pressing '
-                                      'the corresponding button.', reply_markup=MARKUP)
+                                      'To view your schedule and homework, press <i>Today</i>, <i>Tomorrow</i> '
+                                      'or <i>Week</i> or type any future date in <b>DD.⁠MM</b> format.\n'
+                                      'To add new homework, press <i>Add</i> and follow instructions.\n'
+                                      'To delete existing homework, press <i>Delete</i>.\n'
+                                      'You can cancel adding or deleting homework by typing <i>Cancel</i> or pressing '
+                                      'the corresponding button.', reply_markup=MARKUP, parse_mode='HTML')
 
 
 @bot.message_handler(content_types=['document'])
@@ -146,7 +151,11 @@ def handle_text(message):
             bot.register_next_step_handler(message, handle_existing_date)
 
         else:
-            bot.send_message(message.chat.id, "Bot didn't understand you.", reply_markup=MARKUP)
+            date = process_date(message)
+            if date:
+                bot.send_message(message.chat.id, get_schedule(message.from_user.id, date), parse_mode='HTML')
+            elif date is False:
+                bot.send_message(message.chat.id, "Bot didn't understand you.", reply_markup=MARKUP)
 
     except FileNotFoundError:
         bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
