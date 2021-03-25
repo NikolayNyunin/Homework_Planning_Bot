@@ -27,20 +27,19 @@ def check_cancel(message, adding=True):
     return False
 
 
-def check_data(message):
-    if message.from_user.id not in data:
-        bot.send_message(message.chat.id, 'Something went wrong. Please try again.')
-        return True
-
-    return False
-
-
 def process_date(message, function):
     try:
         text = message.text.split('.')
-        date = datetime.date(year=datetime.datetime.now(TIMEZONE).year,
-                             month=int(text[1]), day=int(text[0])).toordinal()
-        if date < datetime.datetime.now(TIMEZONE).date().toordinal():
+        day, month = map(int, text)
+        current_date = datetime.datetime.now(TIMEZONE).date()
+        current_month = current_date.month
+        if current_month < month + 6:
+            year = current_date.year
+        else:
+            year = current_date.year + 1
+
+        date = datetime.date(year=year, month=month, day=day).toordinal()
+        if date < current_date.toordinal():
             bot.send_message(message.chat.id, 'Error: Past date.\n'
                                               'Please enter a future or present date.')
             bot.register_next_step_handler(message, function)
@@ -49,7 +48,8 @@ def process_date(message, function):
 
     except Exception as e:
         bot.send_message(message.chat.id, 'Error: Incorrect date ({}).\n'
-                                          'Make sure to type it in DD.MM format.'.format(str(e)))
+                                          'Make sure to type it in <b>DD.⁠MM</b> format.'.format(str(e)),
+                         parse_mode='HTML')
         bot.register_next_step_handler(message, function)
 
 
@@ -141,8 +141,8 @@ def handle_text(message):
                 return
 
             markup = ReplyKeyboardMarkup(resize_keyboard=True).add(*dates, row_width=3).add('❌ Cancel ❌')
-            bot.send_message(message.chat.id, 'Choose the date of the homework you wish to delete '
-                                              '(or type it as DD.MM)', reply_markup=markup)
+            bot.send_message(message.chat.id, 'Choose the date of the homework you wish to delete.\n'
+                                              '(Or type it as <b>DD.⁠MM</b>).', reply_markup=markup, parse_mode='HTML')
             bot.register_next_step_handler(message, handle_existing_date)
 
         else:
@@ -150,9 +150,9 @@ def handle_text(message):
 
     except FileNotFoundError:
         bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
-                                          'Please set your schedule before requesting it.')
+                                          'Please set your schedule before requesting it.', reply_markup=MARKUP)
     except Exception as e:
-        bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)))
+        bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)), reply_markup=MARKUP)
 
 
 def handle_subject(message):
@@ -185,14 +185,15 @@ def handle_subject(message):
 
         markup.add(*dates, row_width=4).add('❌ Cancel ❌')
         bot.send_message(message.chat.id, 'Choose the deadline: press one of the buttons '
-                                          'or type your own date in DD.MM format.', reply_markup=markup)
+                                          'or type your own date in <b>DD.⁠MM</b> format.',
+                         reply_markup=markup, parse_mode='HTML')
         bot.register_next_step_handler(message, handle_new_date)
 
     except FileNotFoundError:
         bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
-                                          'Please set your schedule before requesting it.')
+                                          'Please set your schedule before requesting it.', reply_markup=MARKUP)
     except Exception as e:
-        bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)))
+        bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)), reply_markup=MARKUP)
 
 
 def handle_new_date(message):
@@ -202,7 +203,7 @@ def handle_new_date(message):
             bot.register_next_step_handler(message, handle_new_date)
             return
 
-        elif check_cancel(message) or check_data(message):
+        elif check_cancel(message):
             return
 
         text = message.text.lower()
@@ -239,9 +240,9 @@ def handle_new_date(message):
 
     except FileNotFoundError:
         bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
-                                          'Please set your schedule before requesting it.')
+                                          'Please set your schedule before requesting it.', reply_markup=MARKUP)
     except Exception as e:
-        bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)))
+        bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)), reply_markup=MARKUP)
 
 
 def handle_type(message):
@@ -251,7 +252,7 @@ def handle_type(message):
             bot.register_next_step_handler(message, handle_type)
             return
 
-        elif check_cancel(message) or check_data(message):
+        elif check_cancel(message):
             return
 
         text = message.text.lower()
@@ -266,9 +267,9 @@ def handle_type(message):
 
     except FileNotFoundError:
         bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
-                                          'Please set your schedule before requesting it.')
+                                          'Please set your schedule before requesting it.', reply_markup=MARKUP)
     except Exception as e:
-        bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)))
+        bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)), reply_markup=MARKUP)
 
 
 def handle_description(message):
@@ -278,7 +279,7 @@ def handle_description(message):
             bot.register_next_step_handler(message, handle_description)
             return
 
-        elif check_cancel(message) or check_data(message):
+        elif check_cancel(message):
             return
 
         subject, date, for_lesson = data.pop(message.from_user.id)
@@ -287,9 +288,9 @@ def handle_description(message):
 
     except FileNotFoundError:
         bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
-                                          'Please set your schedule before requesting it.')
+                                          'Please set your schedule before requesting it.', reply_markup=MARKUP)
     except Exception as e:
-        bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)))
+        bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)), reply_markup=MARKUP)
 
 
 def handle_existing_date(message):
@@ -329,7 +330,12 @@ def handle_homework(message):
         bot.register_next_step_handler(message, handle_homework)
         return
 
-    elif check_cancel(message, adding=False) or check_data(message):
+    elif check_cancel(message, adding=False):
+        return
+
+    elif message.from_user.id not in data:
+        bot.send_message(message.chat.id, 'Error: Date was lost.\n'
+                                          'Please try starting over.', reply_markup=MARKUP)
         return
 
     try:
