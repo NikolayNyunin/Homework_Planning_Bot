@@ -8,6 +8,7 @@ from pandas import ExcelFile
 
 MAX_LESSONS = 5
 WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+SHORT_WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 TIMEZONE = pytz.timezone('Europe/Moscow')
 
 
@@ -218,7 +219,8 @@ def get_dates(user_id):
             dates.append('Tomorrow')
         else:
             date = datetime.date.fromordinal(ordinal_date)
-            dates.append('{}.{}'.format(str(date.day).zfill(2), str(date.month).zfill(2)))
+            dates.append('{}.{} ({})'.format(str(date.day).zfill(2), str(date.month).zfill(2),
+                                             SHORT_WEEK_DAYS[date.weekday()]))
 
     return dates
 

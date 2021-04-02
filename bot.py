@@ -7,8 +7,8 @@ from telebot.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
 import schedule
 
 from my_token import TOKEN
-from planning import TIMEZONE, set_schedule, get_schedule, in_schedule, get_subjects, add_homework, get_dates,\
-    get_homework, delete_homework, delete_past_homework, get_notifications
+from planning import SHORT_WEEK_DAYS, TIMEZONE, set_schedule, get_schedule, in_schedule, get_subjects, add_homework,\
+    get_dates, get_homework, delete_homework, delete_past_homework, get_notifications
 
 MARKUP = ReplyKeyboardMarkup(resize_keyboard=True).add('Today', 'Tomorrow', 'Week').add('Add', 'Delete').add('Info')
 
@@ -29,7 +29,7 @@ def check_cancel(message, adding=True):
 
 def process_date(message, function=None):
     try:
-        text = message.text.split('.')
+        text = message.text.split()[0].split('.')
         day, month = map(int, text)
         current_date = datetime.datetime.now(TIMEZONE).date()
         current_month = current_date.month
@@ -190,9 +190,10 @@ def handle_subject(message):
         for i in range(12):
             ordinal_date += 1
             date = datetime.date.fromordinal(ordinal_date)
-            dates.append('{}.{}'.format(str(date.day).zfill(2), str(date.month).zfill(2)))
+            dates.append('{}.{} ({})'.format(str(date.day).zfill(2), str(date.month).zfill(2),
+                                             SHORT_WEEK_DAYS[date.weekday()]))
 
-        markup.add(*dates, row_width=4).add('❌ Cancel ❌')
+        markup.add(*dates, row_width=3).add('❌ Cancel ❌')
         bot.send_message(message.chat.id, 'Choose the deadline: press one of the buttons '
                                           'or type your own date in <b>DD.⁠MM</b> format.',
                          reply_markup=markup, parse_mode='HTML')
@@ -243,8 +244,8 @@ def handle_new_date(message):
         else:
             data[message.from_user.id].append(True)
 
-        bot.send_message(message.chat.id, 'Write homework description. Type "Cancel" to cancel adding the homework.',
-                         reply_markup=ReplyKeyboardRemove())
+        bot.send_message(message.chat.id, 'Write homework description. Type <i>Cancel</i> to cancel adding the '
+                                          'homework.', reply_markup=ReplyKeyboardRemove(), parse_mode='HTML')
         bot.register_next_step_handler(message, handle_description)
 
     except FileNotFoundError:
@@ -270,8 +271,8 @@ def handle_type(message):
         elif text == 'day':
             data[message.from_user.id].append(False)
 
-        bot.send_message(message.chat.id, 'Write homework description. Type "Cancel" to cancel adding the homework.',
-                         reply_markup=ReplyKeyboardRemove())
+        bot.send_message(message.chat.id, 'Write homework description. Type <i>Cancel</i> to cancel adding the '
+                                          'homework.', reply_markup=ReplyKeyboardRemove(), parse_mode='HTML')
         bot.register_next_step_handler(message, handle_description)
 
     except FileNotFoundError:
@@ -293,7 +294,9 @@ def handle_description(message):
 
         subject, date, for_lesson = data.pop(message.from_user.id)
         add_homework(message.from_user.id, subject, date, for_lesson, message.text)
-        bot.send_message(message.chat.id, 'Homework successfully added.', reply_markup=MARKUP)
+        bot.send_message(message.chat.id, 'Homework successfully added:')
+        bot.send_message(message.chat.id, get_schedule(message.from_user.id, date),
+                         reply_markup=MARKUP, parse_mode='HTML')
 
     except FileNotFoundError:
         bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
