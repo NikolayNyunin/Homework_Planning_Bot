@@ -6,7 +6,7 @@ from itertools import islice
 
 from pandas import ExcelFile
 
-MAX_LESSONS = 5
+MAX_LESSONS = 10
 WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 SHORT_WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 TIMEZONE = pytz.timezone('Europe/Moscow')
@@ -16,12 +16,19 @@ def set_schedule(user_id, file):
     file = ExcelFile(file)
     df = file.parse(file.sheet_names[0])
 
-    subjects = df[df.columns[:3]].to_dict('index')
+    subjects = df[df.columns[1:4]].to_dict('records')
 
-    for key1 in subjects.keys():
-        for key2, val in subjects[key1].items():
+    i = 0
+    while i < len(subjects):
+        for key, val in subjects[i].items():
             if type(val) == float:
-                subjects[key1][key2] = None
+                if key == 'Subject':
+                    del subjects[i]
+                    i -= 1
+                    break
+                else:
+                    subjects[i][key] = None
+        i += 1
 
     with open('files/' + str(user_id) + '_subjects.json', 'w', encoding='utf-8') as subjects_file:
         json.dump(subjects, subjects_file, ensure_ascii=False, indent=4)
@@ -30,7 +37,7 @@ def set_schedule(user_id, file):
                 [[], [], [], [], [], []]]
 
     day_index = 0
-    for label, values in islice(df.items(), 5, 11):
+    for label, values in islice(df.items(), 6, 12):
         for subject in values[1:]:
             if type(subject) == float:
                 schedule[0][day_index].append(-1)
@@ -41,7 +48,7 @@ def set_schedule(user_id, file):
         day_index += 1
 
     day_index = 0
-    for label, values in islice(df.items(), 13, 19):
+    for label, values in islice(df.items(), 14, 20):
         for subject in values[1:]:
             if type(subject) == float:
                 schedule[1][day_index].append(-1)
@@ -99,9 +106,9 @@ def get_schedule(user_id, ordinal_date):
             result += 'No lessons.\n\n'
         else:
             for index in range(MAX_LESSONS):
-                subject_index = str(day_schedule[index])
+                subject_index = day_schedule[index]
 
-                if subject_index != '-1':
+                if subject_index != -1:
                     result += '{}:   {}\n'.format(index + 1, subjects[subject_index]['Subject'])
 
                     teacher = subjects[subject_index]['Teacher']
@@ -133,7 +140,7 @@ def get_schedule(user_id, ordinal_date):
                 if not h['For lesson']:
                     if subject != h['Subject']:
                         subject = h['Subject']
-                        result += '\n' + subjects[str(subject)]['Subject'] + '\n'
+                        result += '\n' + subjects[subject]['Subject'] + '\n'
                     result += '❗<b>{}</b>\n'.format(h['Description'])
 
     return result
@@ -155,7 +162,7 @@ def in_schedule(user_id, ordinal_date, subject_index):
 def get_subjects(user_id):
     with open('files/' + str(user_id) + '_subjects.json', encoding='utf-8') as subjects_json:
         subjects = json.load(subjects_json)
-    subjects = [val['Subject'] for val in subjects.values()]
+    subjects = [s['Subject'] for s in subjects]
     return subjects
 
 

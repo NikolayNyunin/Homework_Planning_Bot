@@ -1,3 +1,4 @@
+import os
 import time
 import datetime
 from threading import Thread
@@ -10,7 +11,8 @@ from my_token import TOKEN
 from planning import SHORT_WEEK_DAYS, TIMEZONE, set_schedule, get_schedule, in_schedule, get_subjects, add_homework,\
     get_dates, get_homework, delete_homework, delete_past_homework, get_notifications
 
-MARKUP = ReplyKeyboardMarkup(resize_keyboard=True).add('Today', 'Tomorrow', 'Week').add('Add', 'Delete').add('Info')
+MARKUP = ReplyKeyboardMarkup(resize_keyboard=True).add('Today', 'Tomorrow', 'Week').add('Add', 'Delete')\
+    .add('Info', 'Form')
 
 bot = telebot.TeleBot(TOKEN)
 data = {}
@@ -70,12 +72,36 @@ def info(message):
     bot.send_message(message.chat.id, 'This is <b>Homework Planning Bot</b>.\n'
                                       'It can monitor your homework.\n'
                                       'To set your schedule, attach .xlsx file with the specific structure.\n'
+                                      'To get the blank Excel form with this structure and the information '
+                                      'on how to fill it, type /form.\n'
                                       'To view your schedule and homework, press <i>Today</i>, <i>Tomorrow</i> '
                                       'or <i>Week</i> or type any future date in <b>DD.⁠MM</b> format.\n'
                                       'To add new homework, press <i>Add</i> and follow instructions.\n'
                                       'To delete existing homework, press <i>Delete</i>.\n'
                                       'You can cancel adding or deleting homework by typing <i>Cancel</i> or pressing '
                                       'the corresponding button.', reply_markup=MARKUP, parse_mode='HTML')
+
+
+@bot.message_handler(commands=['form'])
+@bot.message_handler(func=lambda message: message.text is not None and message.text.lower() == 'form')
+def form(message):
+    bot.send_message(message.chat.id, 'Read and follow the instructions to set your schedule.\n'
+                                      'In this Excel file there are three main parts.\n'
+                                      'The first one (columns <b>A-D</b>) is for the list of all your subjects and '
+                                      'the other two (columns <b>F-L</b> and <b>N-T</b>) are for their order.\n\n'
+                                      'At first, you need to type your subjects into the column named <i>Subject</i>.\n'
+                                      "You can also add your teacher's name or specify the room where each subject "
+                                      "takes place, but this is optional.\n\n"
+                                      'At second, you need to specify their order.\n'
+                                      'It is done by typing indexes of your subjects (displayed in the leftmost column)'
+                                      ' into the cells of the tables labeled <i>Top (odd) week</i> and '
+                                      '<i>Bottom (even) week</i>.\n'
+                                      'If you have the same schedule for all 2 types of weeks, you have to fill '
+                                      'both of these tables with the exact same data.\n',
+                     reply_markup=MARKUP, parse_mode='HTML')
+
+    with open('files/form.xlsx', mode='rb') as form_file:
+        bot.send_document(message.chat.id, form_file)
 
 
 @bot.message_handler(content_types=['document'])
@@ -100,19 +126,23 @@ def handle_change_schedule_answer(message):
     if message.text is None or message.text.lower() not in ('yes', 'no'):
         bot.send_message(message.chat.id, 'Error: Incorrect response.\nPlease choose one of the options.')
         bot.register_next_step_handler(message, handle_change_schedule_answer)
+        return
 
-    elif message.text.lower() == 'yes':
-        path = 'files/' + str(message.from_user.id) + '.xlsx'
+    path = 'files/' + str(message.from_user.id) + '.xlsx'
+
+    if message.text.lower() == 'yes':
         try:
             with open(path, 'rb') as file:
                 set_schedule(message.from_user.id, file)
         except Exception as e:
-            bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)))
+            bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)), reply_markup=MARKUP)
         else:
             bot.send_message(message.chat.id, 'New schedule successfully set.', reply_markup=MARKUP)
 
-    elif message.text.lower() == 'no':
+    else:
         bot.send_message(message.chat.id, "Schedule wasn't changed.", reply_markup=MARKUP)
+
+    os.remove(path)
 
 
 @bot.message_handler(content_types=['text'])
