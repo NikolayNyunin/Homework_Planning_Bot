@@ -323,7 +323,7 @@ def handle_description(message):
             return
 
         subject, date, for_lesson = data.pop(message.from_user.id)
-        add_homework(message.from_user.id, subject, date, for_lesson, message.text)
+        date = add_homework(message.from_user.id, subject, date, for_lesson, message.text)
         bot.send_message(message.chat.id, 'Homework successfully added:')
         bot.send_message(message.chat.id, get_schedule(message.from_user.id, date),
                          reply_markup=MARKUP, parse_mode='HTML')

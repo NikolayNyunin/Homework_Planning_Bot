@@ -204,6 +204,8 @@ def add_homework(user_id, subject_index, date, for_lesson, description):
     with open(path, 'w', encoding='utf-8') as homework_json:
         json.dump(homework, homework_json, ensure_ascii=False, indent=4)
 
+    return int(date)
+
 
 def get_dates(user_id):
     try:
