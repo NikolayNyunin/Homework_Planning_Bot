@@ -1,4 +1,3 @@
-import os
 import datetime
 import pytz
 import json
@@ -6,7 +5,8 @@ from itertools import islice
 
 from pandas import ExcelFile
 
-MAX_LESSONS = 10
+from db import MAX_LESSONS, User, Subject, Homework, Session, get_user
+
 WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 SHORT_WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 TIMEZONE = pytz.timezone('Europe/Moscow')
@@ -16,22 +16,17 @@ def set_schedule(user_id, file):
     file = ExcelFile(file)
     df = file.parse(file.sheet_names[0])
 
-    subjects = df[df.columns[1:4]].to_dict('records')
+    data = df[df.columns[1:4]].to_dict('records')
 
-    i = 0
-    while i < len(subjects):
-        for key, val in subjects[i].items():
-            if type(val) == float:
-                if key == 'Subject':
-                    del subjects[i]
-                    i -= 1
-                    break
-                else:
-                    subjects[i][key] = None
-        i += 1
+    session, user = get_user(user_id)
 
-    with open('files/' + str(user_id) + '_subjects.json', 'w', encoding='utf-8') as subjects_file:
-        json.dump(subjects, subjects_file, ensure_ascii=False, indent=4)
+    user.subjects.clear()
+
+    for row in data:
+        if type(row['Subject']) != float:
+            teacher = row['Teacher'] if type(row['Teacher']) != float else None
+            room = row['Room'] if type(row['Room']) != float else None
+            user.subjects.append(Subject(name=row['Subject'], teacher=teacher, room=room))
 
     schedule = [[[], [], [], [], [], []],
                 [[], [], [], [], [], []]]
@@ -58,44 +53,24 @@ def set_schedule(user_id, file):
                 break
         day_index += 1
 
-    with open('files/' + str(user_id) + '_schedule.json', 'w', encoding='utf-8') as schedule_file:
-        json.dump(schedule, schedule_file)
+    user.schedule = json.dumps(schedule)
+    user.homework.clear()
 
-    if os.path.exists('files/' + str(user_id) + '_homework.json'):
-        os.remove('files/' + str(user_id) + '_homework.json')
-
-    users_path = 'files/users.json'
-    if os.path.exists(users_path):
-        with open(users_path, encoding='utf-8') as users_json:
-            users = json.load(users_json)
-    else:
-        users = []
-
-    if user_id not in users:
-        users.append(user_id)
-
-    with open(users_path, 'w', encoding='utf-8') as users_json:
-        json.dump(users, users_json)
+    session.commit()
+    session.close()
 
 
 def get_schedule(user_id, ordinal_date):
-    with open('files/' + str(user_id) + '_subjects.json', encoding='utf-8') as subjects_json:
-        subjects = json.load(subjects_json)
-    with open('files/' + str(user_id) + '_schedule.json', encoding='utf-8') as schedule_json:
-        schedule = json.load(schedule_json)
+    session, user = get_user(user_id)
+    if not user.schedule or not user.subjects:
+        session.close()
+        raise FileNotFoundError
 
-    try:
-        with open('files/' + str(user_id) + '_homework.json', encoding='utf-8') as homework_json:
-            homework = json.load(homework_json)
-    except FileNotFoundError:
-        homework_exists = False
-    else:
-        homework_exists = True
+    schedule = json.loads(user.schedule)
 
     date = datetime.date.fromordinal(ordinal_date)
     week = date.isocalendar()[1] % 2
     week_day = date.weekday()
-    ordinal_date = str(ordinal_date)
 
     result = '<i>{} ({}.{}):</i>\n\n'.format(WEEK_DAYS[week_day], str(date.day).zfill(2), str(date.month).zfill(2))
     if week_day == 6:
@@ -109,46 +84,42 @@ def get_schedule(user_id, ordinal_date):
                 subject_index = day_schedule[index]
 
                 if subject_index != -1:
-                    result += '{}:   {}\n'.format(index + 1, subjects[subject_index]['Subject'])
+                    subject = user.subjects[subject_index]
+                    result += '{}:   {}\n'.format(index + 1, subject.name)
 
-                    teacher = subjects[subject_index]['Teacher']
-                    if teacher is not None:
-                        result += teacher + '\n'
+                    if subject.teacher is not None:
+                        result += subject.teacher + '\n'
 
-                    room = subjects[subject_index]['Room']
-                    if room is not None:
-                        result += room + '\n'
+                    if subject.room is not None:
+                        result += subject.room + '\n'
 
-                    if homework_exists:
-                        if ordinal_date in homework:
-                            subject_passed = False
-                            for h in homework[ordinal_date]:
-                                if h['Subject'] != day_schedule[index] and subject_passed:
-                                    break
-                                elif h['Subject'] == day_schedule[index]:
-                                    if not subject_passed:
-                                        subject_passed = True
-                                    if h['For lesson']:
-                                        result += '❗<b>{}</b>\n'.format(h['Description'])
+                    homework = session.query(Homework).filter_by(date=ordinal_date, subject=subject_index,
+                                                                 for_lesson=True, user_id=user.id).all()
+                    for h in homework:
+                        result += '❗<b>{}</b>\n'.format(h.description)
 
                     result += '\n'
 
-    if homework_exists:
-        if ordinal_date in homework:
-            subject = None
-            for h in homework[ordinal_date]:
-                if not h['For lesson']:
-                    if subject != h['Subject']:
-                        subject = h['Subject']
-                        result += '\n' + subjects[subject]['Subject'] + '\n'
-                    result += '❗<b>{}</b>\n'.format(h['Description'])
+    homework = session.query(Homework).filter_by(date=ordinal_date, for_lesson=False, user_id=user.id)\
+        .order_by(Homework.subject).all()
+    subject_index = None
+    for h in homework:
+        if subject_index != h.subject:
+            subject_index = h.subject
+            subject_name = user.subjects[subject_index].name
+            result += '\n' + subject_name + '\n'
+        result += '❗<b>{}</b>\n'.format(h.description)
+
+    session.close()
 
     return result
 
 
 def in_schedule(user_id, ordinal_date, subject_index):
-    with open('files/' + str(user_id) + '_schedule.json', encoding='utf-8') as schedule_json:
-        schedule = json.load(schedule_json)
+    session, user = get_user(user_id)
+    if not user.schedule:
+        session.close()
+        raise FileNotFoundError
 
     date = datetime.date.fromordinal(ordinal_date)
     week = date.isocalendar()[1] % 2
@@ -156,28 +127,33 @@ def in_schedule(user_id, ordinal_date, subject_index):
     if week_day == 6:
         return False
 
+    schedule = json.loads(user.schedule)
+    session.close()
+
     return subject_index in schedule[week][week_day]
 
 
 def get_subjects(user_id):
-    with open('files/' + str(user_id) + '_subjects.json', encoding='utf-8') as subjects_json:
-        subjects = json.load(subjects_json)
-    subjects = [s['Subject'] for s in subjects]
+    session, user = get_user(user_id)
+    if not user.subjects:
+        session.close()
+        raise FileNotFoundError
+
+    subjects = [s.name for s in user.subjects]
+    session.close()
+
     return subjects
 
 
 def add_homework(user_id, subject_index, date, for_lesson, description):
-    path = 'files/' + str(user_id) + '_homework.json'
-    if os.path.exists(path):
-        with open(path, encoding='utf-8') as homework_json:
-            homework = json.load(homework_json)
-    else:
-        homework = {}
-
-    with open('files/' + str(user_id) + '_schedule.json', encoding='utf-8') as schedule_json:
-        schedule = json.load(schedule_json)
+    session, user = get_user(user_id)
+    if not user.schedule:
+        session.close()
+        raise FileNotFoundError
 
     if not date:
+        schedule = json.loads(user.schedule)
+
         date = datetime.datetime.now(TIMEZONE).date().toordinal() + 1
         week = datetime.date.fromordinal(date).isocalendar()[1] % 2
         week_day = datetime.date.fromordinal(date).weekday()
@@ -195,31 +171,25 @@ def add_homework(user_id, subject_index, date, for_lesson, description):
             date += 1
             week_day += 1
 
-    date = str(date)
-    if date not in homework:
-        homework[date] = []
-    homework[date].append({'Subject': subject_index, 'For lesson': for_lesson, 'Description': description})
-    homework[date].sort(key=lambda el: el['Subject'])
+    user.homework.append(Homework(date=date, subject=subject_index, for_lesson=for_lesson, description=description))
 
-    with open(path, 'w', encoding='utf-8') as homework_json:
-        json.dump(homework, homework_json, ensure_ascii=False, indent=4)
+    session.commit()
+    session.close()
 
-    return int(date)
+    return date
 
 
 def get_dates(user_id):
-    try:
-        with open('files/{}_homework.json'.format(user_id), encoding='utf-8') as homework_json:
-            homework = json.load(homework_json)
-    except FileNotFoundError:
-        return None
-    if not homework:
+    session, user = get_user(user_id)
+
+    if not user.homework:
         return None
 
     today = datetime.datetime.now(TIMEZONE).date().toordinal()
     dates = []
-    for ordinal_date in sorted(map(int, homework.keys())):
-        ordinal_date = int(ordinal_date)
+
+    ordinal_dates = [row.date for row in session.query(Homework.date).filter_by(user_id=user.id).all()]
+    for ordinal_date in sorted(list(set(ordinal_dates))):
         if ordinal_date < today:
             continue
         elif ordinal_date == today:
@@ -231,139 +201,103 @@ def get_dates(user_id):
             dates.append('{}.{} ({})'.format(str(date.day).zfill(2), str(date.month).zfill(2),
                                              SHORT_WEEK_DAYS[date.weekday()]))
 
+    session.close()
+
     return dates
 
 
 def get_homework(user_id, ordinal_date):
     try:
-        with open('files/{}_homework.json'.format(user_id), encoding='utf-8') as homework_json:
-            homework = json.load(homework_json)
         subjects = get_subjects(user_id)
     except FileNotFoundError:
         return None
 
-    ordinal_date = str(ordinal_date)
-    if not homework or ordinal_date not in homework:
+    session, user = get_user(user_id)
+    homework = session.query(Homework).filter_by(date=ordinal_date, user_id=user.id).order_by(Homework.subject).all()
+
+    if not homework:
         return None
 
     result = []
-    for h in homework[ordinal_date]:
-        result.append('{} ({}):   {}'.format(subjects[h['Subject']], 'lesson' if h['For lesson'] else 'day',
-                                             h['Description']))
+    for h in homework:
+        result.append('{} ({}):   {}'.format(subjects[h.subject], 'lesson' if h.for_lesson else 'day', h.description))
+
+    session.close()
 
     return result
 
 
 def delete_homework(user_id, ordinal_date, homework_str):
-    homework_path = 'files/{}_homework.json'.format(user_id)
-    with open(homework_path, encoding='utf-8') as homework_json:
-        homework = json.load(homework_json)
     subjects = get_subjects(user_id)
-    ordinal_date = str(ordinal_date)
 
     homework_str = homework_str.split('):   ')
     description = homework_str[-1]
-    homework_type_str = homework_str[0].split('(')[-1]
-    homework_type = True if homework_type_str == 'lesson' else False
-    subject = homework_str[0].split(' ({}'.format(homework_type_str))[0]
+    homework_type = homework_str[0].split('(')[-1]
+    for_lesson = True if homework_type == 'lesson' else False
+    subject = homework_str[0].split(' ({}'.format(homework_type))[0]
     subject_index = subjects.index(subject)
 
-    passed_subject = False
-    for i in range(len(homework[ordinal_date])):
-        h = homework[ordinal_date][i]
-        if h['Subject'] != subject_index:
-            if passed_subject:
-                break
-            continue
+    session, user = get_user(user_id)
+    deleted_rows = session.query(Homework).filter_by(date=ordinal_date, subject=subject_index, for_lesson=for_lesson,
+                                                     description=description, user_id=user.id).delete()
 
-        if not passed_subject:
-            passed_subject = True
-        if h['For lesson'] == homework_type and h['Description'] == description:
-            del homework[ordinal_date][i]
-            if not homework[ordinal_date]:
-                del homework[ordinal_date]
-            with open(homework_path, 'w', encoding='utf-8') as homework_json:
-                json.dump(homework, homework_json, ensure_ascii=False, indent=4)
-            return True
+    session.commit()
+    session.close()
 
-    raise Exception('Could not find the homework to delete')
+    if deleted_rows == 0:
+        raise Exception('Could not find the homework to delete')
 
 
 def delete_past_homework():
-    date = datetime.datetime.now(TIMEZONE).date().toordinal()
+    today = datetime.datetime.now(TIMEZONE).date().toordinal()
 
-    users_path = 'files/users.json'
-    if os.path.exists(users_path):
-        with open(users_path, encoding='utf-8') as users_json:
-            users = json.load(users_json)
+    session = Session()
+    session.query(Homework).filter(Homework.date < today - 1).delete()
 
-        for user in users:
-            homework_path = 'files/{}_homework.json'.format(user)
-            if os.path.exists(homework_path):
-                with open(homework_path, encoding='utf-8') as homework_json:
-                    homework = json.load(homework_json)
-
-                for d in sorted(map(int, homework.keys())):
-                    if d < date - 1:
-                        del homework[str(d)]
-                    else:
-                        break
-
-                with open(homework_path, 'w', encoding='utf-8') as homework_json:
-                    json.dump(homework, homework_json, ensure_ascii=False, indent=4)
+    session.commit()
+    session.close()
 
 
 def get_notifications():
-    date = datetime.datetime.now(TIMEZONE).date().toordinal()
+    today = datetime.datetime.now(TIMEZONE).date().toordinal()
 
-    users_path = 'files/users.json'
-    if not os.path.exists(users_path):
-        return None
-
-    with open(users_path, encoding='utf-8') as users_json:
-        users = json.load(users_json)
+    session = Session()
+    users = [(user.id, user.telegram_id) for user in session.query(User).all()]
 
     result = []
-    for user in users:
-        homework_path = 'files/{}_homework.json'.format(user)
-        if not os.path.exists(homework_path):
-            continue
+    for user_id, telegram_id in users:
         try:
-            subjects = get_subjects(user)
+            subjects = get_subjects(telegram_id)
         except FileNotFoundError:
             continue
 
-        with open(homework_path, encoding='utf-8') as homework_json:
-            homework = json.load(homework_json)
-
         text = ''
-        today, tomorrow = False, False
-        if str(date) in homework:
+        today_homework = session.query(Homework).filter_by(user_id=user_id, date=today, for_lesson=False)\
+            .order_by(Homework.subject).all()
+        if today_homework:
+            text += '<i>Today (until the end of the day):</i>\n'
             subject = None
-            for h in homework[str(date)]:
-                if not h['For lesson']:
-                    if not today:
-                        text += '<i>Today (until the end of the day):</i>\n'
-                        today = True
-                    if subject != h['Subject']:
-                        subject = h['Subject']
-                        text += '\n' + str(subjects[subject]) + '\n'
-                    text += '❗<b>{}</b>\n'.format(h['Description'])
+            for h in today_homework:
+                if subject != h.subject:
+                    subject = h.subject
+                    text += '\n' + subjects[subject] + '\n'
+                text += '❗<b>{}</b>\n'.format(h.description)
             text += '\n\n'
 
-        if str(date + 1) in homework:
+        tomorrow_homework = session.query(Homework).filter_by(user_id=user_id, date=today + 1, for_lesson=True)\
+            .order_by(Homework.subject).all()
+        if tomorrow_homework:
+            text += '<i>Tomorrow (only for the lessons):</i>\n'
             subject = None
-            for h in homework[str(date + 1)]:
-                if h['For lesson']:
-                    if not tomorrow:
-                        text += '<i>Tomorrow (only for the lessons):</i>\n'
-                        tomorrow = True
-                    if subject != h['Subject']:
-                        subject = h['Subject']
-                        text += '\n' + str(subjects[subject]) + '\n'
-                    text += '❗<b>{}</b>\n'.format(h['Description'])
+            for h in tomorrow_homework:
+                if subject != h.subject:
+                    subject = h.subject
+                    text += '\n' + subjects[subject] + '\n'
+                text += '❗<b>{}</b>\n'.format(h.description)
 
-        if today or tomorrow:
-            result.append((user, text))
+        if text != '':
+            result.append((telegram_id, text))
+
+    session.close()
 
     return result
