@@ -187,9 +187,6 @@ def handle_text(message):
             elif date is False:
                 bot.send_message(message.chat.id, "Bot didn't understand you.", reply_markup=MARKUP)
 
-    except FileNotFoundError:
-        bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
-                                          'Please set your schedule before requesting it.', reply_markup=MARKUP)
     except Exception as e:
         bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)), reply_markup=MARKUP)
 
@@ -229,9 +226,6 @@ def handle_subject(message):
                          reply_markup=markup, parse_mode='HTML')
         bot.register_next_step_handler(message, handle_new_date)
 
-    except FileNotFoundError:
-        bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
-                                          'Please set your schedule before requesting it.', reply_markup=MARKUP)
     except Exception as e:
         bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)), reply_markup=MARKUP)
 
@@ -278,9 +272,6 @@ def handle_new_date(message):
                                           'homework.', reply_markup=ReplyKeyboardRemove(), parse_mode='HTML')
         bot.register_next_step_handler(message, handle_description)
 
-    except FileNotFoundError:
-        bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
-                                          'Please set your schedule before requesting it.', reply_markup=MARKUP)
     except Exception as e:
         bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)), reply_markup=MARKUP)
 
@@ -305,9 +296,6 @@ def handle_type(message):
                                           'homework.', reply_markup=ReplyKeyboardRemove(), parse_mode='HTML')
         bot.register_next_step_handler(message, handle_description)
 
-    except FileNotFoundError:
-        bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
-                                          'Please set your schedule before requesting it.', reply_markup=MARKUP)
     except Exception as e:
         bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)), reply_markup=MARKUP)
 
@@ -328,9 +316,6 @@ def handle_description(message):
         bot.send_message(message.chat.id, get_schedule(message.from_user.id, date),
                          reply_markup=MARKUP, parse_mode='HTML')
 
-    except FileNotFoundError:
-        bot.send_message(message.chat.id, 'Error: Schedule not found.\n'
-                                          'Please set your schedule before requesting it.', reply_markup=MARKUP)
     except Exception as e:
         bot.send_message(message.chat.id, 'Error: {}.'.format(str(e)), reply_markup=MARKUP)
 

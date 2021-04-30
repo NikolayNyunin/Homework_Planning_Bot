@@ -12,6 +12,11 @@ SHORT_WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 TIMEZONE = pytz.timezone('Europe/Moscow')
 
 
+class ScheduleNotFoundError(Exception):
+    def __str__(self):
+        return 'Schedule not found.\nPlease set your schedule before requesting it'
+
+
 def set_schedule(user_id, file):
     file = ExcelFile(file)
     df = file.parse(file.sheet_names[0])
@@ -64,7 +69,7 @@ def get_schedule(user_id, ordinal_date):
     session, user = get_user(user_id)
     if not user.schedule or not user.subjects:
         session.close()
-        raise FileNotFoundError
+        raise ScheduleNotFoundError
 
     schedule = json.loads(user.schedule)
 
@@ -119,7 +124,7 @@ def in_schedule(user_id, ordinal_date, subject_index):
     session, user = get_user(user_id)
     if not user.schedule:
         session.close()
-        raise FileNotFoundError
+        raise ScheduleNotFoundError
 
     date = datetime.date.fromordinal(ordinal_date)
     week = date.isocalendar()[1] % 2
@@ -137,7 +142,7 @@ def get_subjects(user_id):
     session, user = get_user(user_id)
     if not user.subjects:
         session.close()
-        raise FileNotFoundError
+        raise ScheduleNotFoundError
 
     subjects = [s.name for s in user.subjects]
     session.close()
@@ -149,7 +154,7 @@ def add_homework(user_id, subject_index, date, for_lesson, description):
     session, user = get_user(user_id)
     if not user.schedule:
         session.close()
-        raise FileNotFoundError
+        raise ScheduleNotFoundError
 
     if not date:
         schedule = json.loads(user.schedule)
@@ -209,7 +214,7 @@ def get_dates(user_id):
 def get_homework(user_id, ordinal_date):
     try:
         subjects = get_subjects(user_id)
-    except FileNotFoundError:
+    except ScheduleNotFoundError:
         return None
 
     session, user = get_user(user_id)
@@ -268,7 +273,7 @@ def get_notifications():
     for user_id, telegram_id in users:
         try:
             subjects = get_subjects(telegram_id)
-        except FileNotFoundError:
+        except ScheduleNotFoundError:
             continue
 
         text = ''
