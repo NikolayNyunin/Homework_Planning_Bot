@@ -1,8 +1,8 @@
 import datetime
-import pytz
 import json
 from itertools import islice
 
+import pytz
 from pandas import ExcelFile
 
 from db import MAX_LESSONS, User, Subject, Homework, Session, get_user
@@ -105,7 +105,7 @@ def get_schedule(user_id, ordinal_date):
 
                     result += '\n'
 
-    homework = session.query(Homework).filter_by(date=ordinal_date, for_lesson=False, user_id=user.id)\
+    homework = session.query(Homework).filter_by(date=ordinal_date, for_lesson=False, user_id=user.id) \
         .order_by(Homework.subject).all()
     subject_index = None
     for h in homework:
@@ -184,20 +184,29 @@ def add_homework(user_id, subject_index, date, for_lesson, description):
     return date
 
 
-def get_dates(user_id):
+def get_dates(user_id, ordinal=False):
     session, user = get_user(user_id)
 
     if not user.homework:
+        session.close()
         return None
 
     today = datetime.datetime.now(TIMEZONE).date().toordinal()
-    dates = []
 
-    ordinal_dates = [row.date for row in session.query(Homework.date).filter_by(user_id=user.id).all()]
-    for ordinal_date in sorted(list(set(ordinal_dates))):
-        if ordinal_date < today:
-            continue
-        elif ordinal_date == today:
+    ordinal_dates = [h.date for h in user.homework if h.date >= today]
+    session.close()
+
+    if not ordinal_dates:
+        return None
+
+    ordinal_dates = sorted(list(set(ordinal_dates)))
+
+    if ordinal:
+        return ordinal_dates
+
+    dates = []
+    for ordinal_date in ordinal_dates:
+        if ordinal_date == today:
             dates.append('Today')
         elif ordinal_date == today + 1:
             dates.append('Tomorrow')
@@ -205,8 +214,6 @@ def get_dates(user_id):
             date = datetime.date.fromordinal(ordinal_date)
             dates.append('{}.{} ({})'.format(str(date.day).zfill(2), str(date.month).zfill(2),
                                              SHORT_WEEK_DAYS[date.weekday()]))
-
-    session.close()
 
     return dates
 
@@ -219,6 +226,7 @@ def get_homework(user_id, ordinal_date):
 
     session, user = get_user(user_id)
     homework = session.query(Homework).filter_by(date=ordinal_date, user_id=user.id).order_by(Homework.subject).all()
+    session.close()
 
     if not homework:
         return None
@@ -226,8 +234,6 @@ def get_homework(user_id, ordinal_date):
     result = []
     for h in homework:
         result.append('{} ({}):   {}'.format(subjects[h.subject], 'lesson' if h.for_lesson else 'day', h.description))
-
-    session.close()
 
     return result
 
@@ -277,7 +283,7 @@ def get_notifications():
             continue
 
         text = ''
-        today_homework = session.query(Homework).filter_by(user_id=user_id, date=today, for_lesson=False)\
+        today_homework = session.query(Homework).filter_by(user_id=user_id, date=today, for_lesson=False) \
             .order_by(Homework.subject).all()
         if today_homework:
             text += '<i>Today (until the end of the day):</i>\n'
@@ -289,7 +295,7 @@ def get_notifications():
                 text += '❗<b>{}</b>\n'.format(h.description)
             text += '\n\n'
 
-        tomorrow_homework = session.query(Homework).filter_by(user_id=user_id, date=today + 1, for_lesson=True)\
+        tomorrow_homework = session.query(Homework).filter_by(user_id=user_id, date=today + 1, for_lesson=True) \
             .order_by(Homework.subject).all()
         if tomorrow_homework:
             text += '<i>Tomorrow (only for the lessons):</i>\n'

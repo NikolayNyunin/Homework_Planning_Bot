@@ -1,18 +1,18 @@
+import datetime
 import os
 import time
-import datetime
 from threading import Thread
 
+import schedule
 import telebot
 from telebot.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
-import schedule
 
 from my_token import TOKEN
-from planning import SHORT_WEEK_DAYS, TIMEZONE, set_schedule, get_schedule, in_schedule, get_subjects, add_homework,\
+from planning import SHORT_WEEK_DAYS, TIMEZONE, set_schedule, get_schedule, in_schedule, get_subjects, add_homework, \
     get_dates, get_homework, delete_homework, delete_past_homework, get_notifications
 
-MARKUP = ReplyKeyboardMarkup(resize_keyboard=True).add('Today', 'Tomorrow', 'Week').add('Add', 'Delete')\
-    .add('Info', 'Form')
+MARKUP = ReplyKeyboardMarkup(resize_keyboard=True, row_width=4).add('Today', 'Tomorrow', 'Week', 'All') \
+    .add('Add', 'Delete').add('Info', 'Form')
 
 bot = telebot.TeleBot(TOKEN)
 data = {}
@@ -74,8 +74,8 @@ def info(message):
                                       'To set your schedule, attach .xlsx file with the specific structure.\n'
                                       'To get the blank Excel form with this structure and the information '
                                       'on how to fill it, type /form.\n'
-                                      'To view your schedule and homework, press <i>Today</i>, <i>Tomorrow</i> '
-                                      'or <i>Week</i> or type any future date in <b>DD.⁠MM</b> format.\n'
+                                      'To view your schedule and homework, press <i>Today</i>, <i>Tomorrow</i>, '
+                                      '<i>Week</i> or <i>All</i> or type any future date in <b>DD.⁠MM</b> format.\n'
                                       'To add new homework, press <i>Add</i> and follow instructions.\n'
                                       'To delete existing homework, press <i>Delete</i>.\n'
                                       'You can cancel adding or deleting homework by typing <i>Cancel</i> or pressing '
@@ -162,6 +162,15 @@ def handle_text(message):
             for i in range(7):
                 bot.send_message(message.chat.id, get_schedule(message.from_user.id, date), parse_mode='HTML')
                 date += 1
+
+        elif text == 'all':
+            dates = get_dates(message.from_user.id, ordinal=True)
+            if not dates:
+                bot.send_message(message.chat.id, 'You have no recorded homework.')
+                return
+
+            for date in dates:
+                bot.send_message(message.chat.id, get_schedule(message.from_user.id, date), parse_mode='HTML')
 
         elif text == 'add':
             subjects = get_subjects(message.from_user.id)
