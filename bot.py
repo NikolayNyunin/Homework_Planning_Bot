@@ -375,8 +375,10 @@ def handle_homework(message):
         return
 
     try:
-        delete_homework(message.from_user.id, data[message.from_user.id], message.text)
-        bot.send_message(message.chat.id, 'Homework deleted successfully.', reply_markup=MARKUP)
+        date = delete_homework(message.from_user.id, data[message.from_user.id], message.text)
+        bot.send_message(message.chat.id, 'Homework deleted successfully:', reply_markup=MARKUP)
+        bot.send_message(message.chat.id, get_schedule(message.from_user.id, date),
+                         reply_markup=MARKUP, parse_mode='HTML')
         del data[message.from_user.id]
 
     except Exception as e:

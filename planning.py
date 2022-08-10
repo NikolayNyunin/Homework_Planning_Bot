@@ -249,14 +249,18 @@ def delete_homework(user_id, ordinal_date, homework_str):
     subject_index = subjects.index(subject)
 
     session, user = get_user(user_id)
-    deleted_rows = session.query(Homework).filter_by(date=ordinal_date, subject=subject_index, for_lesson=for_lesson,
-                                                     description=description, user_id=user.id).delete()
+    row_to_delete = session.query(Homework).filter_by(date=ordinal_date, subject=subject_index, for_lesson=for_lesson,
+                                                      description=description, user_id=user.id).first()
+    if row_to_delete:
+        session.delete(row_to_delete)
 
     session.commit()
     session.close()
 
-    if deleted_rows == 0:
+    if not row_to_delete:
         raise Exception('Could not find the homework to delete')
+
+    return ordinal_date
 
 
 def delete_past_homework():
